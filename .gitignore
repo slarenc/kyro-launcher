@@ -1,0 +1,16 @@
+/target/
+/dist/
+/output/
+/publish/
+/.tools/
+/src-tauri/gen/
+/node_modules/
+/data/
+**/state.json
+**/state.json.tmp
+*.log
+.env
+.env.*
+!.env.example
+/tools/*
+!/tools/ui-smoke.cjs
