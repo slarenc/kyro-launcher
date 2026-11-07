@@ -15,3 +15,4 @@
 /tools/*
 !/tools/ui-smoke.cjs
 !/tools/native-smoke.ps1
+!/tools/installer-smoke.ps1
