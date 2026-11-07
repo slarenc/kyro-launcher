@@ -21,6 +21,7 @@ pub struct AppContext {
     state: Arc<State>,
     events: mpsc::Sender<Event>,
     repaint: Arc<dyn Fn() + Send + Sync>,
+    pub presence: Arc<crate::presence::Presence>,
 }
 impl AppContext {
     pub fn new(
@@ -28,10 +29,12 @@ impl AppContext {
         events: mpsc::Sender<Event>,
         repaint: Arc<dyn Fn() + Send + Sync>,
     ) -> Self {
+        let presence = Arc::new(crate::presence::Presence::new(Arc::downgrade(&state)));
         Self {
             state,
             events,
             repaint,
+            presence,
         }
     }
     pub fn state(&self) -> &State {

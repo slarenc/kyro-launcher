@@ -1,6 +1,6 @@
 [package]
 name = "kyro-launcher"
-version = "0.7.0"
+version = "0.7.1"
 description = "KYRO Minecraft Launcher"
 edition = "2021"
 
@@ -25,5 +25,6 @@ keyring = { version = "3", features = ["windows-native"] }
 base64 = "0.22"
 semver = "1"
 toml = "0.8"
+discord-rich-presence = "1.1.0"
 [build-dependencies]
 winresource = "0.1"

@@ -751,7 +751,7 @@ impl Launcher {
             Rect::from_min_size(Pos2::new(x, top + 118. + extra), Vec2::new(240., 56.)),
             true,
         );
-        let mini = Rect::from_min_size(Pos2::new(x, top + 188. + extra), Vec2::new(130., 32.));
+        let mini = Rect::from_min_size(Pos2::new(x, top + 188. + extra), Vec2::new(96., 32.));
         label_at(
             ui,
             mini.min + Vec2::new(0., 7.),
@@ -764,16 +764,101 @@ impl Launcher {
             self.open_versions();
         }
         ui.painter().vline(
-            x + 143.,
+            x + 104.,
             (mini.top() + 6.0)..=(mini.bottom() - 6.0),
             Stroke::new(1.0_f32, BORDER),
         );
-        let all = Rect::from_min_size(Pos2::new(x + 160., mini.top()), Vec2::new(115., 32.));
+        let all = Rect::from_min_size(Pos2::new(x + 116., mini.top()), Vec2::new(94., 32.));
         label_at(ui, all.min + Vec2::new(0., 7.), "ВСЕ ВЕРСИИ", 12., MUTED);
         if hit(ui, all, "all-versions", "Все версии", !self.busy()).clicked() {
             self.open_versions();
         }
         let play = Rect::from_min_size(Pos2::new(x, top + 238. + extra), Vec2::new(256., 60.));
+        let boost = Rect::from_min_size(Pos2::new(x + 218., mini.top()), Vec2::new(80., 32.));
+        let enabled_mods = if self.mod_scope == super::scope(&self.settings)
+            && self.settings.loader != "Vanilla"
+        {
+            crate::fps_boost::enabled_count(&self.mods)
+        } else {
+            0
+        };
+        let boost_active = enabled_mods > 0;
+        if boost_active {
+            for spread in (1..=4).rev() {
+                ui.painter().rect_stroke(
+                    boost.expand(spread as f32),
+                    9. + spread as f32,
+                    Stroke::new(1.0_f32, accent.gamma_multiply(0.025)),
+                    egui::StrokeKind::Outside,
+                );
+            }
+            ui.painter().rect(
+                boost,
+                9.,
+                accent.gamma_multiply(0.09),
+                Stroke::new(1.0_f32, accent.gamma_multiply(0.8)),
+                egui::StrokeKind::Inside,
+            );
+            ui.painter()
+                .circle_filled(boost.right_center() - Vec2::new(7., 0.), 2., accent);
+        }
+        let boost_response = hit(ui, boost, "fps-boost", "FPS-буст", !self.busy())
+            .on_hover_text(if boost_active { format!("FPS-буст активен · включено модов оптимизации: {enabled_mods}. Нажми, чтобы проверить набор.") } else { "Подобрать моды оптимизации для выбранной версии и ядра".into() });
+        label_at(
+            ui,
+            boost.min + Vec2::new(if boost_active { 6. } else { 0. }, 7.),
+            "FPS-буст",
+            12.,
+            if boost_response.hovered() || boost_active {
+                accent
+            } else {
+                MUTED
+            },
+        );
+        if boost_response.clicked() && self.save() {
+            self.fps_open = true;
+            self.fps_plan = serde_json::Value::Null;
+            self.submit("fps-plan", Job::FpsPlan);
+        }
+        let folder_rect = Rect::from_min_size(Pos2::new(x + 306., mini.top()), Vec2::new(68., 32.));
+        let folder_response = hit(ui, folder_rect, "game-folder", "Папка", true)
+            .on_hover_text("Открыть папку игры выбранного профиля или сборки");
+        let folder_color = if folder_response.hovered() {
+            accent
+        } else {
+            MUTED
+        };
+        label_at(
+            ui,
+            folder_rect.min + Vec2::new(23., 7.),
+            "Папка",
+            12.,
+            folder_color,
+        );
+        let folder_icon = folder_rect.left_center() + Vec2::new(8., 0.);
+        ui.painter().add(egui::Shape::line(
+            vec![
+                folder_icon + Vec2::new(-7., -5.),
+                folder_icon + Vec2::new(-1., -5.),
+                folder_icon + Vec2::new(1., -2.),
+                folder_icon + Vec2::new(7., -2.),
+                folder_icon + Vec2::new(7., 6.),
+                folder_icon + Vec2::new(-7., 6.),
+                folder_icon + Vec2::new(-7., -5.),
+            ],
+            Stroke::new(
+                1.2_f32,
+                if folder_response.hovered() {
+                    accent
+                } else {
+                    MUTED
+                },
+            ),
+        ));
+        if folder_response.clicked() {
+            let result = crate::open_folder(self.app.state(), "instance".into()).map(|_| ());
+            self.result(result, "Папка игры открыта");
+        }
         let enabled = !self.busy() && !self.pending.contains("preflight");
         let response = hit(ui, play, "play", "Играть", enabled);
         for spread in (1..=7).rev() {
@@ -1714,6 +1799,15 @@ impl Launcher {
                     ui.horizontal(|ui|{if ui.button("Свой фон…").clicked(){if let Some(image)=pick_image(){self.settings.home_background=image;}}if ui.button("Сбросить фон").clicked(){self.settings.home_background.clear();}});
                 });
                 section(ui,"УВЕДОМЛЕНИЯ","Загрузки и обновления",|ui|{ui.checkbox(&mut self.settings.mod_notifications,"Обновления модов");ui.checkbox(&mut self.settings.system_notifications,"События лаунчера");});
+                section(ui,"DISCORD RICH PRESENCE","Активность KYRO в твоём профиле Discord",|ui|{
+                    ui.checkbox(&mut self.settings.discord_enabled,"Показывать активность в Discord");
+                    ui.checkbox(&mut self.settings.discord_show_server,"Показывать адрес сервера");
+                    ui.label("Application ID · приложение KyroLauncher уже настроено");
+                    ui.add(egui::TextEdit::singleline(&mut self.settings.discord_application_id).hint_text(crate::presence::APPLICATION_ID).margin(Margin::symmetric(13,10)).desired_width(f32::INFINITY));
+                    secondary(ui,self.app.presence.status());
+                    secondary(ui,"Нужен настольный Discord. Название KyroLauncher задаётся в Developer Portal. Иконка KYRO подставляется автоматически; таймер идёт с открытия лаунчера.");
+                    secondary(ui,"Адрес сервера определяется по сообщениям Minecraft в журнале игры.");
+                });
                 section(ui,"ВЕРСИЯ ЛАУНЧЕРА","Обновления KYRO",|ui|{secondary(ui,format!("KYRO {} / Rust + egui",env!("CARGO_PKG_VERSION")));if ui.button("Проверить обновления").clicked(){self.submit("check-update",Job::CheckUpdate);}if !self.update.is_null(){secondary(ui,if self.update["available"]==true{format!("Доступна {}",text(&self.update,"version"))}else{"Установлена актуальная версия".into()});if self.update["installable"]==true&&ui.button("Установить и перезапустить").clicked(){self.submit("update-launcher",Job::UpdateLauncher);}}});
             },
             1=>{
@@ -1741,6 +1835,40 @@ impl Launcher {
     }
     pub(super) fn dialogs(&mut self, ctx: &egui::Context) {
         let accent = color(&self.settings.accent);
+        if self.fps_open {
+            modal(ctx, "fps-boost-dialog", 24).show(ctx, |ui| {
+                ui.set_width((ctx.content_rect().width() - 96.).min(480.));
+                if modal_heading(ui, "ОПТИМИЗАЦИЯ", "FPS-буст", accent) && !self.busy() { self.fps_open = false; }
+                ui.add_space(12.);
+                ui.label(RichText::new(format!("{} · {}", self.settings.version, self.settings.loader)).color(accent));
+                ui.label("Моды оптимизации с Modrinth. Настройки графики не меняются.");
+                ui.add_space(12.);
+                if self.pending.contains("fps-plan") {
+                    ui.horizontal(|ui| { ui.spinner(); ui.label("Проверяем совместимость и зависимости…"); });
+                } else if self.fps_plan["scope"].as_str() == Some(super::scope(&self.settings).as_str()) {
+                    egui::ScrollArea::vertical().max_height((ctx.content_rect().height() - 410.).clamp(100., 270.)).show(ui, |ui| {
+                        for row in array(&self.fps_plan, "rows") {
+                            ui.label(RichText::new(text(&row, "name")).family(egui::FontFamily::Name("InterSemiBold".into())).size(15.));
+                            ui.label(RichText::new(text(&row, "description")).size(13.).color(MUTED));
+                            ui.label(RichText::new(text(&row, "status")).size(12.).color(accent));
+                            ui.add_space(10.);
+                        }
+                    });
+                    let count = self.fps_plan["items"].as_array().map_or(0, Vec::len);
+                    ui.add_space(10.);
+                    if self.fps_plan["unknown"].as_u64().unwrap_or(0) > 0 {
+                        ui.label(RichText::new("Есть моды, не опознанные Modrinth. Их совместимость нужно проверить отдельно.").size(12.).color(MUTED));
+                    }
+                    ui.label(format!("К скачиванию: {count} файлов с зависимостями"));
+                    if ui.add_enabled(count > 0 && !self.busy(), egui::Button::new("Установить FPS-буст").min_size(Vec2::new(220., 38.))).clicked() {
+                        self.submit("fps-install", Job::FpsInstall(self.fps_plan.clone()));
+                    }
+                } else if ui.button("Повторить подбор").clicked() && !self.busy() && self.save() {
+                    self.submit("fps-plan", Job::FpsPlan);
+                }
+                if self.pending.contains("fps-install") { ui.spinner(); ui.label(&self.progress.0); }
+            });
+        }
         if self.versions_open {
             let response = modal(ctx, "versions-dialog", 28).show(ctx, |ui| {
                 ui.set_width((ctx.content_rect().width() - 96.).min(524.));

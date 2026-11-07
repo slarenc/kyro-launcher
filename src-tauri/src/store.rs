@@ -24,6 +24,9 @@ pub struct Settings {
     pub mod_notifications: bool,
     pub system_notifications: bool,
     pub microsoft_client_id: String,
+    pub discord_enabled: bool,
+    pub discord_application_id: String,
+    pub discord_show_server: bool,
 }
 impl Default for Settings {
     fn default() -> Self {
@@ -47,6 +50,9 @@ impl Default for Settings {
             mod_notifications: true,
             system_notifications: true,
             microsoft_client_id: String::new(),
+            discord_enabled: true,
+            discord_application_id: crate::presence::APPLICATION_ID.into(),
+            discord_show_server: true,
         }
     }
 }

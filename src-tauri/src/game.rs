@@ -432,6 +432,8 @@ pub async fn launch_to(
     let mut child = cmd
         .spawn()
         .map_err(|e| format!("Не удалось запустить Java: {e}"))?;
+    app.presence
+        .game_started(&settings, server, state.root.join("game.log"));
     let start = Instant::now();
     let started = chrono::Utc::now().to_rfc3339();
     match settings.launch_behavior.as_str() {
@@ -440,6 +442,7 @@ pub async fn launch_to(
         _ => {}
     }
     let result = child.wait().await;
+    app.presence.game_finished();
     app.window(crate::app_context::WindowAction::Restore);
     let exit = result.map_err(|e| e.to_string())?;
     state

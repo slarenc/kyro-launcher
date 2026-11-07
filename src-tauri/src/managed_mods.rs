@@ -73,7 +73,7 @@ fn safe_segment_relaxed(name: &str) -> Result<(), String> {
         Ok(())
     }
 }
-async fn identify(files: &[Value]) -> Result<Value, String> {
+pub(crate) async fn identify(files: &[Value]) -> Result<Value, String> {
     net::client()?.post("https://api.modrinth.com/v2/version_files").json(&json!({"hashes":files.iter().map(|v|&v["hash"]).collect::<Vec<_>>(),"algorithm":"sha1"})).send().await.map_err(|e|e.to_string())?.error_for_status().map_err(|e|e.to_string())?.json().await.map_err(|e|e.to_string())
 }
 async fn updates(files: &[Value], game: &str, loader: &str) -> Result<Value, String> {

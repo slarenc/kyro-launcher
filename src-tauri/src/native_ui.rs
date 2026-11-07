@@ -61,6 +61,8 @@ pub fn run() -> eframe::Result {
 #[derive(Clone)]
 enum Job {
     Versions,
+    FpsPlan,
+    FpsInstall(Value),
     Search(String, String, Settings, u32),
     Scan,
     Launch,
@@ -90,6 +92,8 @@ struct Reply {
 async fn execute(app: AppContext, job: Job) -> Result<Value, String> {
     let state = app.state();
     match job {
+        Job::FpsPlan => crate::fps_boost::plan(state).await,
+        Job::FpsInstall(plan) => crate::fps_boost::install(app, plan).await,
         Job::Versions => crate::version_library(state).await,
         Job::Search(q, k, s, o) => crate::search_modrinth(q, k, s.version, s.loader, o).await,
         Job::Scan => crate::managed_mods::scan_mods(state, true).await,
@@ -294,6 +298,8 @@ struct Launcher {
     account_open: bool,
     nickname: String,
     versions_open: bool,
+    fps_open: bool,
+    fps_plan: Value,
     library: Value,
     version_query: String,
     downloaded: bool,
@@ -395,6 +401,8 @@ impl Launcher {
             account_open: false,
             nickname: String::new(),
             versions_open: false,
+            fps_open: false,
+            fps_plan: Value::Null,
             library: Value::Null,
             version_query: String::new(),
             downloaded: false,
@@ -442,6 +450,7 @@ impl Launcher {
                     "launch",
                     "prepare",
                     "install",
+                    "fps-install",
                     "update-mod",
                     "toggle",
                     "java",
@@ -568,6 +577,7 @@ impl Launcher {
             }
             if [
                 "scan",
+                "fps-plan",
                 "screens",
                 "image",
                 "compatibility",
@@ -595,6 +605,21 @@ impl Launcher {
                     }
                 }
                 Ok(v) => match reply.tag.as_str() {
+                    "fps-plan" => self.fps_plan = v,
+                    "fps-install" => {
+                        self.fps_plan = Value::Null;
+                        self.fps_open = false;
+                        self.mod_epoch += 1;
+                        self.mod_checked = None;
+                        self.mod_cache.remove(&scope(&self.settings));
+                        self.refresh();
+                        self.progress = (String::new(), 0.);
+                        self.toast = Some((
+                            format!("FPS-буст: установлено {} файлов", v["installed"]),
+                            Instant::now(),
+                        ));
+                        self.scan();
+                    }
                     "versions" => self.library = v,
                     "search" => self.catalog = v,
                     "scan" => {
@@ -1028,6 +1053,16 @@ impl Launcher {
                         14 => {
                             self.settings.home_layout = "card".into();
                         }
+                        15 => {
+                            self.settings.home_layout = "orbit".into();
+                            self.fps_open = true;
+                            self.submit("fps-plan", Job::FpsPlan);
+                        }
+                        16 => {
+                            self.fps_open = false;
+                            self.mod_scope = scope(&self.settings);
+                            self.mods = json!({"files":[{"filename":"sodium-fabric.jar","project_id":"AANobbMI","enabled":true}]});
+                        }
                         _ => {
                             let report = json!({"release_count":array(&self.library,"releases").len(),"version_warning":self.library["warning"],"error":self.error,"pending":self.pending});
                             let _ = std::fs::write(
@@ -1040,7 +1075,7 @@ impl Launcher {
                 }
             }
         }
-        if smoke.step < 15
+        if smoke.step < 17
             && !smoke.waiting
             && smoke.since.elapsed() > Duration::from_millis(1200)
             && (self.pending.is_empty() || smoke.since.elapsed() > Duration::from_secs(15))
@@ -1109,6 +1144,7 @@ impl eframe::App for Launcher {
         self.draw(ctx);
     }
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        self.app.presence.shutdown();
         if self.dirty.is_some() && !self.busy() {
             let _ = crate::save_settings(self.app.state(), self.settings.clone());
         }
