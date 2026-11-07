@@ -312,126 +312,133 @@ fn arguments(list: &Value, vars: &HashMap<String, String>) -> Vec<String> {
 pub async fn launch_to(
     app: crate::app_context::AppContext,
     server: Option<&str>,
+    attempt: &crate::launch_control::LaunchAttempt,
 ) -> Result<(), String> {
     let state = app.state();
-    let settings = state
-        .data
-        .lock()
-        .map_err(|e| e.to_string())?
-        .settings
-        .clone();
-    let offline = {
-        let d = state.data.lock().map_err(|e| e.to_string())?;
-        if let Some(id) = d
-            .selected_account
-            .as_deref()
-            .filter(|s| s.starts_with("offline:"))
-        {
-            Some(
-                d.offline_accounts
-                    .iter()
-                    .find(|a| format!("offline:{}", a.uuid) == id)
-                    .cloned()
-                    .ok_or("Офлайн-аккаунт не найден. Выберите аккаунт в профиле")?,
-            )
-        } else {
-            None
-        }
-    };
-    let is_offline = offline.is_some();
-    let account = if let Some(a) = offline {
-        auth::Account {
-            name: a.name,
-            uuid: a.uuid,
-            access_token: "0".into(),
-            refresh_token: String::new(),
-            expires: i64::MAX,
-        }
-    } else {
-        auth::current(&settings.microsoft_client_id).await?
-    };
-    let (v, cp, natives, index, java_path) = prepare(&app, &settings).await?;
-    let game_dir = state.instance_dir(&settings)?;
-    fs::create_dir_all(&game_dir).map_err(|e| e.to_string())?;
-    let cp = std::env::join_paths(cp)
-        .map_err(|e| e.to_string())?
-        .to_string_lossy()
-        .into_owned();
-    let mut vars = HashMap::new();
-    for (key, value) in [
-        ("auth_player_name", account.name),
-        ("auth_uuid", account.uuid),
-        ("auth_access_token", account.access_token),
-        (
-            "user_type",
-            if is_offline { "legacy" } else { "msa" }.into(),
-        ),
-        ("version_name", settings.version.clone()),
-        ("version_type", "release".into()),
-        ("game_directory", game_dir.to_string_lossy().into_owned()),
-        (
-            "assets_root",
-            state.root.join("assets").to_string_lossy().into_owned(),
-        ),
-        ("assets_index_name", index),
-        ("natives_directory", natives.to_string_lossy().into_owned()),
-        ("classpath", cp),
-        ("launcher_name", "KYRO".into()),
-        ("launcher_version", env!("CARGO_PKG_VERSION").into()),
-        ("user_properties", "{}".into()),
-        ("clientid", settings.microsoft_client_id.clone()),
-        ("auth_xuid", String::new()),
-        ("classpath_separator", ";".into()),
-        (
-            "library_directory",
-            state.root.join("libraries").to_string_lossy().into_owned(),
-        ),
-    ] {
-        vars.insert(key.to_owned(), value);
-    }
-    let mut cmd = tokio::process::Command::new(&java_path);
-    cmd.current_dir(&game_dir)
-        .arg(format!("-Xmx{}G", settings.memory_gb.clamp(2, 32)))
-        .arg("-Xms512M");
-    if let Some(config) = v["logging"]["client"]["file"].as_object() {
-        let name = config
-            .get("id")
-            .and_then(Value::as_str)
-            .ok_or("Нет имени конфигурации логирования")?;
-        safe_segment(name)?;
-        let path = state.root.join("assets/log_configs").join(name);
-        net::download(
-            config
-                .get("url")
-                .and_then(Value::as_str)
-                .ok_or("Нет URL конфигурации логирования")?,
-            &path,
-            config.get("sha1").and_then(Value::as_str),
-        )
+    let (mut cmd, settings) = attempt
+        .prepare(async {
+            let settings = state
+                .data
+                .lock()
+                .map_err(|e| e.to_string())?
+                .settings
+                .clone();
+            let offline = {
+                let d = state.data.lock().map_err(|e| e.to_string())?;
+                if let Some(id) = d
+                    .selected_account
+                    .as_deref()
+                    .filter(|s| s.starts_with("offline:"))
+                {
+                    Some(
+                        d.offline_accounts
+                            .iter()
+                            .find(|a| format!("offline:{}", a.uuid) == id)
+                            .cloned()
+                            .ok_or("Офлайн-аккаунт не найден. Выберите аккаунт в профиле")?,
+                    )
+                } else {
+                    None
+                }
+            };
+            let is_offline = offline.is_some();
+            let account = if let Some(a) = offline {
+                auth::Account {
+                    name: a.name,
+                    uuid: a.uuid,
+                    access_token: "0".into(),
+                    refresh_token: String::new(),
+                    expires: i64::MAX,
+                }
+            } else {
+                auth::current(&settings.microsoft_client_id).await?
+            };
+            let (v, cp, natives, index, java_path) = prepare(&app, &settings).await?;
+            let game_dir = state.instance_dir(&settings)?;
+            fs::create_dir_all(&game_dir).map_err(|e| e.to_string())?;
+            let cp = std::env::join_paths(cp)
+                .map_err(|e| e.to_string())?
+                .to_string_lossy()
+                .into_owned();
+            let mut vars = HashMap::new();
+            for (key, value) in [
+                ("auth_player_name", account.name),
+                ("auth_uuid", account.uuid),
+                ("auth_access_token", account.access_token),
+                (
+                    "user_type",
+                    if is_offline { "legacy" } else { "msa" }.into(),
+                ),
+                ("version_name", settings.version.clone()),
+                ("version_type", "release".into()),
+                ("game_directory", game_dir.to_string_lossy().into_owned()),
+                (
+                    "assets_root",
+                    state.root.join("assets").to_string_lossy().into_owned(),
+                ),
+                ("assets_index_name", index),
+                ("natives_directory", natives.to_string_lossy().into_owned()),
+                ("classpath", cp),
+                ("launcher_name", "KYRO".into()),
+                ("launcher_version", env!("CARGO_PKG_VERSION").into()),
+                ("user_properties", "{}".into()),
+                ("clientid", settings.microsoft_client_id.clone()),
+                ("auth_xuid", String::new()),
+                ("classpath_separator", ";".into()),
+                (
+                    "library_directory",
+                    state.root.join("libraries").to_string_lossy().into_owned(),
+                ),
+            ] {
+                vars.insert(key.to_owned(), value);
+            }
+            let mut cmd = tokio::process::Command::new(&java_path);
+            cmd.current_dir(&game_dir)
+                .arg(format!("-Xmx{}G", settings.memory_gb.clamp(2, 32)))
+                .arg("-Xms512M");
+            if let Some(config) = v["logging"]["client"]["file"].as_object() {
+                let name = config
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .ok_or("Нет имени конфигурации логирования")?;
+                safe_segment(name)?;
+                let path = state.root.join("assets/log_configs").join(name);
+                net::download(
+                    config
+                        .get("url")
+                        .and_then(Value::as_str)
+                        .ok_or("Нет URL конфигурации логирования")?,
+                    &path,
+                    config.get("sha1").and_then(Value::as_str),
+                )
+                .await?;
+                if let Some(arg) = v["logging"]["client"]["argument"].as_str() {
+                    cmd.arg(arg.replace("${path}", &path.to_string_lossy()));
+                }
+            }
+            // Arguments are passed directly to Java, never through a shell.
+            cmd.args(settings.jvm_args.split_whitespace())
+                .args(arguments(&v["arguments"]["jvm"], &vars));
+            cmd.arg(text(&v, "mainClass")?)
+                .args(arguments(&v["arguments"]["game"], &vars));
+            if let Some(address) = server {
+                cmd.args(crate::servers::connect_args(&settings.version, address)?);
+            }
+            let log = fs::File::create(state.root.join("game.log")).map_err(|e| e.to_string())?;
+            cmd.stdout(Stdio::from(log.try_clone().map_err(|e| e.to_string())?))
+                .stderr(Stdio::from(log));
+            #[cfg(windows)]
+            {
+                cmd.creation_flags(0x08000000);
+            }
+            Ok((cmd, settings))
+        })
         .await?;
-        if let Some(arg) = v["logging"]["client"]["argument"].as_str() {
-            cmd.arg(arg.replace("${path}", &path.to_string_lossy()));
-        }
-    }
-    // Arguments are passed directly to Java, never through a shell.
-    cmd.args(settings.jvm_args.split_whitespace())
-        .args(arguments(&v["arguments"]["jvm"], &vars));
-    cmd.arg(text(&v, "mainClass")?)
-        .args(arguments(&v["arguments"]["game"], &vars));
-    if let Some(address) = server {
-        cmd.args(crate::servers::connect_args(&settings.version, address)?);
-    }
-    let log = fs::File::create(state.root.join("game.log")).map_err(|e| e.to_string())?;
-    cmd.stdout(Stdio::from(log.try_clone().map_err(|e| e.to_string())?))
-        .stderr(Stdio::from(log));
-    #[cfg(windows)]
-    {
-        cmd.creation_flags(0x08000000);
-    }
-    progress(&app, "Minecraft запущен", 1.0);
+    attempt.start_game()?;
     let mut child = cmd
         .spawn()
         .map_err(|e| format!("Не удалось запустить Java: {e}"))?;
+    progress(&app, "Minecraft запущен", 1.0);
     app.presence
         .game_started(&settings, server, state.root.join("game.log"));
     let start = Instant::now();

@@ -22,6 +22,8 @@ pub struct AppContext {
     events: mpsc::Sender<Event>,
     repaint: Arc<dyn Fn() + Send + Sync>,
     pub presence: Arc<crate::presence::Presence>,
+    pub launch: Arc<crate::launch_control::LaunchControl>,
+    pub native_window: Arc<crate::native_window::NativeWindow>,
 }
 impl AppContext {
     pub fn new(
@@ -35,6 +37,8 @@ impl AppContext {
             events,
             repaint,
             presence,
+            launch: Arc::new(crate::launch_control::LaunchControl::default()),
+            native_window: Arc::new(crate::native_window::NativeWindow::default()),
         }
     }
     pub fn state(&self) -> &State {
@@ -51,6 +55,9 @@ impl AppContext {
         Ok(())
     }
     pub fn window(&self, action: WindowAction) {
+        if matches!(action, WindowAction::Restore) {
+            self.native_window.restore();
+        }
         let _ = self.events.send(Event::Window(action));
         (self.repaint)();
     }

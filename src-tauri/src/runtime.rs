@@ -6,7 +6,7 @@ use std::{
 
 pub async fn java_major(path: &str) -> Option<u64> {
     let mut cmd = tokio::process::Command::new(path);
-    cmd.arg("-version");
+    cmd.kill_on_drop(true).arg("-version");
     #[cfg(windows)]
     cmd.creation_flags(0x08000000);
     let output = cmd.output().await.ok()?;

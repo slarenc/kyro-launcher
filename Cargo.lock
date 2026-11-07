@@ -1826,7 +1826,7 @@ dependencies = [
 
 [[package]]
 name = "kyro-launcher"
-version = "0.7.1"
+version = "0.7.2"
 dependencies = [
  "base64 0.22.1",
  "chrono",
@@ -1838,6 +1838,7 @@ dependencies = [
  "image",
  "keyring",
  "md-5",
+ "raw-window-handle",
  "reqwest",
  "rfd",
  "semver",
@@ -1848,6 +1849,7 @@ dependencies = [
  "tokio",
  "toml 0.8.2",
  "uuid 1.29.0",
+ "windows-sys 0.61.2",
  "winresource",
  "zip",
 ]

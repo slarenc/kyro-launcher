@@ -31,7 +31,9 @@ try {
     if (-not $process.WaitForExit(90000)) { throw "Native smoke did not finish in 90 seconds (PID $($process.Id))" }
     if ($process.ExitCode -ne 0) { throw "Native smoke failed: $($process.ExitCode)" }
     $screens = @(Get-ChildItem -LiteralPath $capturePath -Filter 'screen-*.png')
-    if ($screens.Count -ne 17) { throw "Expected 17 screenshots, found $($screens.Count): $capturePath" }
+    if ($screens.Count -ne 20) { throw "Expected 20 screenshots, found $($screens.Count): $capturePath" }
+    $report = Get-Content -LiteralPath (Join-Path $capturePath 'report.json') -Raw | ConvertFrom-Json
+    if (-not $report.window_restored) { throw 'Native launcher did not return after hide/minimize.' }
     Write-Output "Native smoke passed: $capturePath"
 } finally {
     $env:KYRO_DATA_DIR = $previousData

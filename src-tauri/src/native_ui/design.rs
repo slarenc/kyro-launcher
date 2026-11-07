@@ -859,8 +859,19 @@ impl Launcher {
             let result = crate::open_folder(self.app.state(), "instance".into()).map(|_| ());
             self.result(result, "Папка игры открыта");
         }
-        let enabled = !self.busy() && !self.pending.contains("preflight");
-        let response = hit(ui, play, "play", "Играть", enabled);
+        let can_cancel = self.app.launch.can_cancel();
+        let enabled = can_cancel || (!self.busy() && !self.pending.contains("preflight"));
+        let response = hit(
+            ui,
+            play,
+            "play",
+            if can_cancel {
+                "Отменить"
+            } else {
+                "Играть"
+            },
+            enabled,
+        );
         for spread in (1..=7).rev() {
             ui.painter().rect_filled(
                 play.expand(spread as f32),
@@ -883,19 +894,37 @@ impl Launcher {
             TEXT
         };
         let c = play.center();
-        ui.painter().add(egui::Shape::convex_polygon(
-            vec![
-                c + Vec2::new(-42., -6.),
-                c + Vec2::new(-42., 6.),
-                c + Vec2::new(-32., 0.),
-            ],
-            text_color,
-            Stroke::NONE,
-        ));
+        if can_cancel {
+            let cross = c + Vec2::new(-37., 0.);
+            ui.painter().line_segment(
+                [cross - Vec2::splat(5.), cross + Vec2::splat(5.)],
+                Stroke::new(1.8_f32, text_color),
+            );
+            ui.painter().line_segment(
+                [cross + Vec2::new(-5., 5.), cross + Vec2::new(5., -5.)],
+                Stroke::new(1.8_f32, text_color),
+            );
+        } else {
+            ui.painter().add(egui::Shape::convex_polygon(
+                vec![
+                    c + Vec2::new(-42., -6.),
+                    c + Vec2::new(-42., 6.),
+                    c + Vec2::new(-32., 0.),
+                ],
+                text_color,
+                Stroke::NONE,
+            ));
+        }
         label_at(
             ui,
             c + Vec2::new(-12., -10.),
-            if self.busy() {
+            if can_cancel {
+                "Отменить"
+            } else if self.app.launch.is_cancelling() {
+                "Отмена…"
+            } else if self.app.launch.is_running() {
+                "В игре"
+            } else if self.busy() {
                 "Запуск…"
             } else {
                 "Играть"
@@ -903,7 +932,9 @@ impl Launcher {
             16.,
             text_color,
         );
-        if response.clicked() && self.save() {
+        if response.clicked() && can_cancel {
+            self.app.launch.cancel();
+        } else if response.clicked() && self.save() {
             self.submit("preflight", Job::Compatibility);
         }
         let note = if !self.settings.instance_id.is_empty() {
@@ -1137,9 +1168,15 @@ impl Launcher {
                         );
                     });
                 if self.busy() {
+                    let cancelling = self.app.launch.is_cancelling();
+                    let can_cancel = self.app.launch.can_cancel();
+                    let show_cancel = can_cancel || cancelling;
                     let rect = Rect::from_min_size(
-                        Pos2::new(r.right() - 385., r.bottom() - 135.),
-                        Vec2::new(350., 65.),
+                        Pos2::new(
+                            r.right() - 385.,
+                            r.bottom() - if show_cancel { 175. } else { 135. },
+                        ),
+                        Vec2::new(350., if show_cancel { 105. } else { 65. }),
                     );
                     let mut ui =
                         root.new_child(UiBuilder::new().id_salt("operation").max_rect(rect));
@@ -1149,8 +1186,29 @@ impl Launcher {
                         .corner_radius(12)
                         .inner_margin(14)
                         .show(&mut ui, |ui| {
-                            secondary(ui, &self.progress.0);
+                            secondary(
+                                ui,
+                                if cancelling {
+                                    "Остановка загрузки…"
+                                } else {
+                                    &self.progress.0
+                                },
+                            );
                             ui.add(egui::ProgressBar::new(self.progress.1).desired_width(320.));
+                            if show_cancel
+                                && ui
+                                    .add_enabled(
+                                        can_cancel,
+                                        egui::Button::new(if cancelling {
+                                            "Отмена…"
+                                        } else {
+                                            "Отменить запуск"
+                                        }),
+                                    )
+                                    .clicked()
+                            {
+                                self.app.launch.cancel();
+                            }
                         });
                 }
             });
@@ -1793,7 +1851,7 @@ impl Launcher {
                     ui.horizontal_wrapped(|ui|{ui.label("Тема");for (id,name) in [("dark","Тёмная"),("midnight","Полночь"),("black","Чёрная"),("light","Светлая")]{ui.selectable_value(&mut self.settings.theme,id.into(),name);}});ui.add_space(8.);
                     ui.horizontal_wrapped(|ui|{ui.label("Палитра");for hex in ["#a185cf","#8752ff","#659aff","#4bc6c5","#80c99a","#eabd68","#e597bb","#eb838b","#d8dbe5"]{let c=color(hex);let (r,_)=ui.allocate_exact_size(Vec2::splat(36.),Sense::hover());let selected=self.settings.accent.eq_ignore_ascii_case(hex);let response=hit(ui,r,hex,hex,true);if selected{ui.painter().circle_stroke(r.center(),17.5,Stroke::new(1.0_f32,c));}ui.painter().circle_filled(r.center(),11.,c);if selected{ui.painter().text(r.center(),Align2::CENTER_CENTER,"✓",FontId::proportional(13.),BG);}if response.clicked(){self.settings.accent=hex.into();}}});
                 });
-                section(ui,"ПРИ ЗАПУСКЕ ИГРЫ","Что делать с окном лаунчера",|ui|{ui.horizontal_wrapped(|ui|{for (id,label) in [("hide","Скрыть"),("minimize","Свернуть"),("keep","Оставить открытым")]{ui.selectable_value(&mut self.settings.launch_behavior,id.into(),label);}});});
+                section(ui,"ПРИ ЗАПУСКЕ ИГРЫ","После закрытия Minecraft лаунчер откроется автоматически",|ui|{ui.horizontal_wrapped(|ui|{for (id,label) in [("hide","Скрыть"),("minimize","Свернуть"),("keep","Оставить открытым")]{ui.selectable_value(&mut self.settings.launch_behavior,id.into(),label);}});});
                 section(ui,"ГЛАВНЫЙ ЭКРАН","Оформление твоего Minecraft",|ui|{
                     ui.horizontal(|ui|{ui.selectable_value(&mut self.settings.home_layout,"orbit".into(),"Орбита");ui.selectable_value(&mut self.settings.home_layout,"card".into(),"Карточка");});
                     ui.horizontal(|ui|{if ui.button("Свой фон…").clicked(){if let Some(image)=pick_image(){self.settings.home_background=image;}}if ui.button("Сбросить фон").clicked(){self.settings.home_background.clear();}});

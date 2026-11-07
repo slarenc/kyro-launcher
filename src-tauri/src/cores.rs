@@ -214,6 +214,7 @@ async fn installer_profile(
     let log = fs::File::create(root.join("core-install.log")).map_err(|e| e.to_string())?;
     let mut command = tokio::process::Command::new(&settings.java_path);
     command
+        .kill_on_drop(true)
         .current_dir(root)
         .arg("-Djava.awt.headless=true")
         .arg("-jar")

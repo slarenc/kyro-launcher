@@ -31,8 +31,21 @@ pub fn finish(
         .ok()
         .and_then(|b| serde_json::from_slice(&b).ok())
         .unwrap_or(json!({"started":time}));
-    meta["ok"] = json!(result.is_ok());
-    meta["error"] = json!(result.as_ref().err());
+    let cancelled = result
+        .as_ref()
+        .err()
+        .is_some_and(|e| e == crate::launch_control::CANCELLED);
+    meta["cancelled"] = json!(cancelled);
+    meta["ok"] = if cancelled {
+        Value::Null
+    } else {
+        json!(result.is_ok())
+    };
+    meta["error"] = if cancelled {
+        Value::Null
+    } else {
+        json!(result.as_ref().err())
+    };
     let _ = fs::write(path, serde_json::to_vec(&meta).unwrap_or_default());
     let game = state.root.join("game.log");
     let current = game
@@ -169,6 +182,11 @@ pub fn diagnose_launch(state: &State) -> Result<Value, String> {
         .and_then(|b| serde_json::from_slice(&b).ok())
         .unwrap_or(Value::Null);
     let started = meta["started"].as_i64().unwrap_or(0);
+    if meta["cancelled"] == true {
+        return Ok(
+            json!({"title":"Запуск отменён пользователем","findings":[],"evidence":[],"running":false,"ok":false}),
+        );
+    }
     let crash = last_crash(&profile.join("crash-reports"), started);
     let mut text = meta["error"].as_str().unwrap_or("").to_string();
     if !meta.is_null()

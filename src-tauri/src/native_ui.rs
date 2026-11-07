@@ -54,7 +54,11 @@ pub fn run() -> eframe::Result {
             centered: true,
             ..Default::default()
         },
-        Box::new(|cc| Ok(Box::new(Launcher::new(&cc.egui_ctx)))),
+        Box::new(|cc| {
+            let launcher = Launcher::new(&cc.egui_ctx);
+            launcher.app.native_window.bind(cc);
+            Ok(Box::new(launcher))
+        }),
     )
 }
 
@@ -593,6 +597,15 @@ impl Launcher {
             }
             match reply.result {
                 Err(e) => {
+                    if reply.tag == "launch" && e == crate::launch_control::CANCELLED {
+                        self.progress = (String::new(), 0.);
+                        self.refresh();
+                        self.toast = Some((
+                            "Запуск отменён. Скачанные файлы сохранены.".into(),
+                            Instant::now(),
+                        ));
+                        continue;
+                    }
                     if reply.tag == "login-poll" {
                         self.login = Value::Null;
                     }
@@ -1063,8 +1076,31 @@ impl Launcher {
                             self.mod_scope = scope(&self.settings);
                             self.mods = json!({"files":[{"filename":"sodium-fabric.jar","project_id":"AANobbMI","enabled":true}]});
                         }
+                        17 => {
+                            self.app.launch.begin();
+                            *self.app.state().busy.lock().unwrap() = true;
+                            self.progress = ("Загрузка файлов Minecraft".into(), 0.35);
+                        }
+                        18 => {
+                            *self.app.state().busy.lock().unwrap() = false;
+                            self.app.window(WindowAction::Hide);
+                            let app = self.app.clone();
+                            self.runtime.spawn(async move {
+                                tokio::time::sleep(Duration::from_millis(750)).await;
+                                app.window(WindowAction::Restore);
+                            });
+                        }
+                        19 => {
+                            self.app.window(WindowAction::Minimize);
+                            let app = self.app.clone();
+                            self.runtime.spawn(async move {
+                                tokio::time::sleep(Duration::from_millis(750)).await;
+                                app.window(WindowAction::Restore);
+                            });
+                        }
                         _ => {
-                            let report = json!({"release_count":array(&self.library,"releases").len(),"version_warning":self.library["warning"],"error":self.error,"pending":self.pending});
+                            *self.app.state().busy.lock().unwrap() = false;
+                            let report = json!({"release_count":array(&self.library,"releases").len(),"version_warning":self.library["warning"],"error":self.error,"pending":self.pending,"window_restored":self.app.native_window.is_visible()});
                             let _ = std::fs::write(
                                 smoke.dir.join("report.json"),
                                 serde_json::to_vec_pretty(&report).unwrap_or_default(),
@@ -1075,7 +1111,7 @@ impl Launcher {
                 }
             }
         }
-        if smoke.step < 17
+        if smoke.step < 20
             && !smoke.waiting
             && smoke.since.elapsed() > Duration::from_millis(1200)
             && (self.pending.is_empty() || smoke.since.elapsed() > Duration::from_secs(15))
@@ -1144,6 +1180,7 @@ impl eframe::App for Launcher {
         self.draw(ctx);
     }
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        self.app.native_window.unbind();
         self.app.presence.shutdown();
         if self.dirty.is_some() && !self.busy() {
             let _ = crate::save_settings(self.app.state(), self.settings.clone());
@@ -1153,6 +1190,100 @@ impl eframe::App for Launcher {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn preparing_launch_can_be_cancelled_from_home_or_progress() {
+        for caption in ["Отменить", "Отменить запуск"] {
+            let ctx = egui::Context::default();
+            let mut app = test_app(&ctx);
+            *app.app.state().busy.lock().unwrap() = true;
+            let attempt = app.app.launch.begin();
+            app.progress = ("Загрузка файлов Minecraft".into(), 0.25);
+            let raw = || egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    Vec2::new(960., 600.),
+                )),
+                ..Default::default()
+            };
+            let mut out = None;
+            for _ in 0..3 {
+                out = Some(ctx.run(raw(), |ctx| app.draw(ctx)));
+            }
+            let point = out
+                .unwrap()
+                .shapes
+                .iter()
+                .find_map(|s| match &s.shape {
+                    egui::Shape::Text(t) if t.galley.job.text == caption => {
+                        Some(t.pos + t.galley.size() / 2.)
+                    }
+                    _ => None,
+                })
+                .expect("Visible cancellation action");
+            for pressed in [true, false] {
+                let mut input = raw();
+                input.events = vec![
+                    egui::Event::PointerMoved(point),
+                    egui::Event::PointerButton {
+                        pos: point,
+                        button: egui::PointerButton::Primary,
+                        pressed,
+                        modifiers: egui::Modifiers::default(),
+                    },
+                ];
+                let _ = ctx.run(input, |ctx| app.draw(ctx));
+            }
+            assert!(app.app.launch.is_cancelling(), "{caption} did not cancel");
+            assert!(attempt.start_game().is_err());
+            attempt.finish();
+            *app.app.state().busy.lock().unwrap() = false;
+        }
+    }
+    #[test]
+    #[ignore = "cancels a live Minecraft preparation request"]
+    fn native_cancel_launch_preserves_cache_and_releases_busy() {
+        let ctx = egui::Context::default();
+        let app = test_app(&ctx);
+        let session_count = app.app.state().data.lock().unwrap().sessions.len();
+        let cached = app.app.state().root.join("cached-file.bin");
+        std::fs::create_dir_all(&app.app.state().root).unwrap();
+        std::fs::write(&cached, b"existing verified cache").unwrap();
+        app.runtime.block_on(async {
+            for _ in 0..2 {
+                let context = app.app.clone();
+                let task = tokio::spawn(async move { crate::launch_game(context).await });
+                tokio::time::timeout(Duration::from_secs(10), async {
+                    loop {
+                        if let Ok(Event::Message(name, _)) = app.events.try_recv() {
+                            if name == "progress" {
+                                assert!(app.app.launch.cancel());
+                                break;
+                            }
+                        }
+                        tokio::time::sleep(Duration::from_millis(1)).await;
+                    }
+                })
+                .await
+                .expect("Preparation progress");
+                let result = tokio::time::timeout(Duration::from_secs(5), task)
+                    .await
+                    .unwrap()
+                    .unwrap();
+                assert_eq!(result.unwrap_err(), crate::launch_control::CANCELLED);
+                assert!(!*app.app.state().busy.lock().unwrap());
+                while app.events.try_recv().is_ok() {}
+            }
+        });
+        assert_eq!(std::fs::read(cached).unwrap(), b"existing verified cache");
+        assert_eq!(
+            app.app.state().data.lock().unwrap().sessions.len(),
+            session_count
+        );
+        assert_eq!(
+            crate::diagnostics::diagnose_launch(app.app.state()).unwrap()["title"],
+            "Запуск отменён пользователем"
+        );
+    }
     fn test_app(ctx: &egui::Context) -> Launcher {
         let root = std::env::temp_dir().join(format!(
             "kyro-egui-{}",

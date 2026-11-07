@@ -6,8 +6,10 @@ mod customization;
 mod diagnostics;
 mod fps_boost;
 mod game;
+mod launch_control;
 mod managed_mods;
 mod modpacks;
+mod native_window;
 mod net;
 mod playtools;
 mod presence;
@@ -475,12 +477,16 @@ pub(crate) async fn run_launch(
         *busy = true;
     }
     let record = diagnostics::start(&app);
-    let result = game::launch_to(app.clone(), server.as_deref()).await;
+    let attempt = app.launch.begin();
+    let result = game::launch_to(app.clone(), server.as_deref(), &attempt).await;
+    attempt.finish();
     diagnostics::finish(&app, record, &result);
     let state = app.state();
     *state.busy.lock().map_err(|e| e.to_string())? = false;
     if let Err(e) = &result {
-        state.notify("Не удалось запустить Minecraft", e);
+        if e != launch_control::CANCELLED {
+            state.notify("Не удалось запустить Minecraft", e);
+        }
     }
     let _ = app.emit("state-changed", ());
     result
