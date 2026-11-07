@@ -102,6 +102,87 @@ async fn versions() -> Result<Value, String> {
         .collect::<Vec<_>>()))
 }
 #[tauri::command]
+async fn version_library(state: tauri::State<'_, State>) -> Result<Value, String> {
+    let root = state.root.clone();
+    let sessions = state
+        .data
+        .lock()
+        .map_err(|e| e.to_string())?
+        .sessions
+        .clone();
+    let cache = root.join("metadata/version-library.json");
+    let manifest =
+        match net::json("https://piston-meta.mojang.com/mc/game/version_manifest_v2.json").await {
+            Ok(v) => {
+                if let Some(parent) = cache.parent() {
+                    let _ = std::fs::create_dir_all(parent);
+                }
+                if let Ok(bytes) = serde_json::to_vec(&v) {
+                    let _ = std::fs::write(&cache, bytes);
+                }
+                v
+            }
+            Err(_) => std::fs::read(&cache)
+                .ok()
+                .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+                .unwrap_or_else(|| json!({"versions":[]})),
+        };
+    let mut releases: Vec<_> = manifest["versions"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|v| v["type"] == "release")
+        .filter(|v| {
+            let id = v["id"].as_str().unwrap_or("");
+            !id.starts_with("1.")
+                || id
+                    .split('.')
+                    .nth(1)
+                    .and_then(|s| s.parse::<u32>().ok())
+                    .is_some_and(|n| n >= 13)
+        })
+        .map(|v| json!({"id":v["id"],"date":v["releaseTime"]}))
+        .collect();
+    let mut prepared = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    if let Ok(files) = std::fs::read_dir(root.join("profiles")) {
+        for file in files.flatten() {
+            if file.path().extension().is_some_and(|s| s == "json") {
+                if let Ok(bytes) = std::fs::read(file.path()) {
+                    if let Ok(v) = serde_json::from_slice::<Value>(&bytes) {
+                        let version = v["version"].as_str().unwrap_or("");
+                        let loader = v["loader"].as_str().unwrap_or("");
+                        if safe_segment(version).is_ok()
+                            && cores::LOADERS.contains(&loader)
+                            && seen.insert(format!("{version}/{loader}"))
+                        {
+                            prepared.push(v);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    for session in sessions {
+        if session.exit_code == Some(0)
+            && root
+                .join("versions")
+                .join(&session.version)
+                .join(format!("{}.jar", session.version))
+                .exists()
+            && seen.insert(format!("{}/{}", session.version, session.loader))
+        {
+            prepared.push(json!({"version":session.version,"loader":session.loader,"prepared_at":session.started}));
+        }
+    }
+    for profile in &prepared {
+        if !releases.iter().any(|r| r["id"] == profile["version"]) {
+            releases.push(json!({"id":profile["version"],"date":null}));
+        }
+    }
+    Ok(json!({"releases":releases,"prepared":prepared}))
+}
+#[tauri::command]
 async fn search_modrinth(
     query: String,
     kind: String,
@@ -489,6 +570,7 @@ fn main() {
             save_settings,
             notices,
             versions,
+            version_library,
             search_modrinth,
             install_mod,
             launch_game,

@@ -278,6 +278,14 @@ pub async fn prepare(
     .try_collect::<Vec<_>>()
     .await?;
     cp.push(jar);
+    fs::create_dir_all(root.join("profiles")).map_err(|e| e.to_string())?;
+    let record = json!({"version":settings.version,"loader":settings.loader,"prepared_at":chrono::Utc::now().to_rfc3339()});
+    fs::write(
+        root.join("profiles")
+            .join(format!("{}-{}.json", settings.version, settings.loader)),
+        serde_json::to_vec(&record).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())?;
     Ok((v, cp, natives, index_id))
 }
 fn arguments(list: &Value, vars: &HashMap<String, String>) -> Vec<String> {

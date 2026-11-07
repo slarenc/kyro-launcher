@@ -52,6 +52,7 @@ function empty(title,text,ico='box'){return `<div class="empty">${icon(ico)}<str
 function render(){
  $('#page').innerHTML=(!native?'<div class="preview-banner">Предпросмотр интерфейса · запустите EXE для доступа к Rust, Minecraft и Modrinth.</div>':'')+({play:home,catalog:catalog,activity:activity,notifications:notifications,settings:settings}[page])();
  bind();
+ window.KyroPickers.enhance($('#page'));
 }
 function home(){return `<div class="home"><div class="home-copy"><div class="eyebrow">MINECRAFT · JAVA EDITION</div><div class="version-display">${esc(s().version)}</div><select class="loader-display core-select" id="game-loader" aria-label="Ядро Minecraft" ${state.busy?'disabled':''}>${['Vanilla','Fabric','Quilt','NeoForge'].map(l=>`<option ${l===s().loader?'selected':''}>${l}</option>`).join('')}</select><div class="version-controls"><select id="game-version" aria-label="Версия Minecraft">${[...new Set([s().version,...releaseVersions])].map(v=>`<option ${v===s().version?'selected':''}>${esc(v)}</option>`).join('')}</select><span class="divider"></span><button class="text-button" id="all-versions">ВСЕ ВЕРСИИ</button></div><button class="primary play-button" id="play" ${state.busy?'disabled':''}>${icon('play')}<span>${state.busy?'ЗАПУСК…':'PLAY'}</span></button><div class="home-note">${state.account?'Всё готово к твоей следующей истории.':'Добавь офлайн-аккаунт по нику или войди через Microsoft — нажми на профиль внизу меню.'}</div></div><div class="home-orbit"></div><span class="orbit-caption">JAVA EDITION / 01</span></div>`;}
 function activity(){
@@ -115,13 +116,13 @@ function settings(){
  section('JAVA','Minecraft 1.21 требует Java 21 x64.',`<input id="java-path" aria-label="Путь к Java" value="${esc(s().java_path)}" placeholder="C:\\Program Files\\Java\\bin\\java.exe"><p>Можно указать полный путь к java.exe или команду из PATH.</p>`)+
  `</div><div>`+section('АРГУМЕНТЫ JVM','Передаются Java напрямую, без командной оболочки.',`<textarea id="jvm-args" class="code-input" spellcheck="false" aria-label="Аргументы JVM">${esc(s().jvm_args)}</textarea><button id="reset-jvm">Сбросить к рекомендуемым</button>`)+`</div></div>`;
  if(settingsTab==='downloads')content=section('ЗАГРУЗКИ','Параллельная загрузка файлов.',`<div class="setting-row"><span>Потоков: <b id="threads-value">${s().download_threads}</b></span></div><input id="threads" type="range" min="1" max="16" aria-label="Потоки загрузки" value="${s().download_threads}">`)+section('ФАЙЛЫ И ЦЕЛОСТНОСТЬ','Проверка по SHA-1 при загрузке Minecraft и модов.',`<div class="stack"><button id="verify" ${state.busy?'disabled':''}>${icon('check')} Перепроверить файлы Minecraft</button>${folderAction('instance','Папка профиля',state.paths?.profile||`data/instances/${s().version}-${s().loader}`)}${folderAction('launcher','Папка лаунчера',state.paths?.launcher||'Каталог с EXE')}${folderAction('root','Данные лаунчера',state.paths?.data||state.root||'Каталог данных')}<button data-folder="log">${icon('box')} Лог игры</button><button data-folder="core-log">${icon('box')} Лог установки ядра</button></div><p>Папка профиля содержит моды, миры и настройки выбранной версии и ядра. Папка данных содержит общий кеш и настройки KYRO.</p>`);
- return heading('Настройки')+`<div class="tabs">${[['general','Основные'],['java','Java и память'],['downloads','Загрузки']].map(([key,label])=>`<button data-settings-tab="${key}" class="${settingsTab===key?'selected':''}">${label}</button>`).join('')}</div>${content}<div class="settings-end"><span id="save-status">Изменения сохраняются автоматически</span><span>KYRO / 0.4.0</span></div>`;
+ return heading('Настройки')+`<div class="tabs">${[['general','Основные'],['java','Java и память'],['downloads','Загрузки']].map(([key,label])=>`<button data-settings-tab="${key}" class="${settingsTab===key?'selected':''}">${label}</button>`).join('')}</div>${content}<div class="settings-end"><span id="save-status">Изменения сохраняются автоматически</span><span>KYRO / 0.5.0</span></div>`;
 }
 function bind(){
  const core=$('#game-loader');if(core)core.onchange=async()=>{s().loader=core.value;catalogData=null;if(await persist()){await sync();render();}};
  $$('[data-loader]').forEach(b=>b.onclick=async()=>{s().loader=b.dataset.loader;catalogData=null;if(await persist())render();});
  const version=$('#game-version');if(version)version.onchange=async()=>{s().version=version.value;catalogData=null;if(await persist()){await sync();render();}};
- if($('#all-versions'))$('#all-versions').onclick=()=>{if(!native)return toast('Список версий загружается в приложении.');version.focus();version.showPicker?.();};
+ if($('#all-versions'))$('#all-versions').onclick=e=>window.KyroPickers.openVersions(e.currentTarget);
  if($('#play'))$('#play').onclick=()=>runOperation('Подготовка Minecraft…',async()=>{if(!await persist())return;await invoke('launch_game');},true);
  if($('#activity-year'))$('#activity-year').onchange=e=>{year=Number(e.target.value);render();};
  $$('[data-kind]').forEach(b=>b.onclick=()=>{catalogKind=b.dataset.kind;catalogOffset=0;catalogData=null;catalogSeq++;catalogLoading=false;render();if(catalogKind!=='installed')loadCatalog();});
@@ -147,8 +148,8 @@ function bind(){
 async function runOperation(message,task,isGame=false){
  if(state.busy)return toast('Дождитесь завершения текущей операции.');
  state.busy=true;$('#operation').hidden=false;$('#operation-label').textContent=message;$('#operation-progress').value=0.01;updateChrome();render();
- try{await task();toast(isGame?'Игровая сессия завершена.':'Готово.');}
- catch(e){failure(e);}
+ try{await task();toast(isGame?'Игровая сессия завершена.':'Готово.');return true;}
+ catch(e){failure(e);return false;}
  finally{state.busy=false;$('#operation').hidden=true;await sync().catch(failure);render();}
 }
 function openAccount(){
@@ -182,8 +183,9 @@ $('#maximize').onclick=()=>native&&window.__TAURI__.window.getCurrentWindow().to
 $('#close').onclick=()=>{if(state.busy){toast('Дождитесь завершения игры или установки, чтобы сохранить историю сессии.');return;}if(native)window.__TAURI__.window.getCurrentWindow().close();};
 async function boot(){
  try{if(!native){const saved=JSON.parse(localStorage.getItem('kyro-preview-settings')||'null');if(saved)saved&&Object.assign(state.data.settings,saved);}await sync();render();
- if(native){await window.__TAURI__.event.listen('progress',e=>{$('#operation').hidden=false;$('#operation-label').textContent=e.payload.message;$('#operation-progress').value=e.payload.fraction;});await window.__TAURI__.event.listen('state-changed',async()=>{await sync();render();});await window.__TAURI__.event.listen('close-blocked',()=>toast('Дождитесь завершения игры или установки.'));
+ if(native){await window.__TAURI__.event.listen('progress',e=>{$('#operation').hidden=false;$('#operation-label').textContent=e.payload.message;$('#operation-progress').value=e.payload.fraction;window.KyroPickers.progress(e.payload.message);});await window.__TAURI__.event.listen('state-changed',async()=>{await sync();render();});await window.__TAURI__.event.listen('close-blocked',()=>toast('Дождитесь завершения игры или установки.'));
   invoke('versions').then(v=>{releaseVersions=v.filter(v=>!/^1\.(?:[0-9]|1[0-2])(?:\.|$)/.test(v));if(page==='play')render();}).catch(e=>toast('Не удалось обновить список версий: '+e));
  }}catch(e){failure(e);render();}
 }
+window.KyroPickers.configure({current:()=>({...s(),busy:state.busy}),releases:()=>releaseVersions,load:()=>invoke('version_library'),prepare:()=>runOperation('Подготовка версии…',()=>invoke('verify_files')),select:async(version,loader)=>{if(state.busy)throw new Error('Дождитесь завершения текущей операции');s().version=version;s().loader=loader;if(!await persist())throw new Error('Не удалось сохранить выбор');await sync();catalogData=null;catalogOffset=0;render();if(page==='catalog')loadCatalog();}});
 boot();

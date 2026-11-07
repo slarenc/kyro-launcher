@@ -8,6 +8,7 @@ const fs = require('fs');
  await page.addInitScript(() => {
    const settings={username:'Nova',version:'1.21.1',loader:'Fabric',memory_gb:6,java_path:'java',jvm_args:'-XX:+UseG1GC',download_threads:8,launch_behavior:'hide',language:'ru',theme:'black',accent:'#a185cf',microsoft_client_id:''};
    const data={settings,sessions:[],notices:[],installed:[],offline_accounts:[],selected_account:null};
+   const prepared=[{version:'1.21.1',loader:'Fabric',prepared_at:'2026-11-01T12:00:00Z'}];
    window.__TAURI__={core:{invoke:async(name,args)=>{
     if(name==='snapshot'){const a=data.offline_accounts.find(a=>'offline:'+a.uuid===data.selected_account);return {data:structuredClone(data),account:a?{...a,kind:'offline'}:null,paths:{launcher:'C:/Kyro',data:'C:/Kyro/data',profile:`C:/Kyro/data/instances/${settings.version}-${settings.loader}`},busy:false};}
     if(name==='offline_account'){
@@ -17,6 +18,8 @@ const fs = require('fs');
       return;
     }
     if(name==='versions')return ['1.21.1','1.21','1.20.6'];
+    if(name==='version_library')return {releases:[{id:'26.3',date:'2026-09-15T12:00:00Z'},{id:'1.21.1',date:'2024-08-08T12:00:00Z'},{id:'1.21',date:'2024-06-13T12:00:00Z'}],prepared:structuredClone(prepared)};
+    if(name==='verify_files'){if(!prepared.some(p=>p.version===settings.version&&p.loader===settings.loader))prepared.push({version:settings.version,loader:settings.loader,prepared_at:new Date().toISOString()});return;}
     if(name==='save_settings'){Object.assign(settings,args.settings);return;}
     if(name==='search_modrinth'){window.__kyroLastSearch=args;return {hits:[{project_id:'sodium',title:'Sodium',description:'Оптимизация рендеринга и повышение FPS',author:'CaffeineMC',downloads:1000000}],total_hits:1};}
     if(name==='install_mod'){data.installed.push({project_id:args.project,name:args.name,filename:'sodium.jar',kind:'mod',game_version:settings.version,loader:settings.loader});return;}
@@ -27,7 +30,7 @@ const fs = require('fs');
  await page.goto('file:///'+path.resolve('ui/index.html').replaceAll('\\','/'));
  fs.mkdirSync('output/app-preview',{recursive:true});
  await page.getByRole('button',{name:'PLAY',exact:true}).waitFor();
- if(await page.locator('.loader-display').evaluate(e=>getComputedStyle(e).fontStyle)!=='normal')throw new Error('Fabric must be upright');
+ if(await page.locator('#game-loader-trigger').evaluate(e=>getComputedStyle(e).fontStyle)!=='normal')throw new Error('Fabric must be upright');
  await page.screenshot({path:'output/app-preview/01-home.png'});
  if(await page.locator('#page').evaluate(e=>e.scrollWidth>e.clientWidth))throw new Error('Home must not scroll horizontally');
  if(await page.locator('[data-page="friends"]').count())throw new Error('Friends must be removed');
@@ -35,13 +38,33 @@ const fs = require('fs');
  await page.evaluate(()=>document.fonts.load('600 14px Inter'));
  if(!await page.evaluate(()=>[...document.fonts].some(f=>f.family==='Inter'&&f.status==='loaded')))throw new Error('Bundled Inter font did not load');
  if(await page.locator('.loader-tabs button:disabled').count())throw new Error('Unavailable loader placeholders must be removed');
+ await page.locator('#game-loader-trigger').click();
+ await page.getByRole('listbox',{name:'Ядро Minecraft'}).waitFor();
+ await page.screenshot({path:'output/app-preview/11-core-menu.png'});
+ await page.getByRole('option',{name:'Quilt',exact:true}).click();
+ await page.waitForFunction(()=>document.querySelector('#footer-version').textContent.includes('QUILT'));
+ await page.locator('#game-version-trigger').click();
+ await page.locator('#version-search').fill('26.3');
+ await page.waitForFunction(()=>document.querySelectorAll('#version-dialog .version-row').length===4);
+ await page.screenshot({path:'output/app-preview/12-versions.png'});
+ await page.getByRole('button',{name:'Minecraft 26.3 NeoForge',exact:true}).click();
+ await page.waitForFunction(()=>document.querySelector('#footer-version').textContent.includes('26.3 · NEOFORGE'));
+ await page.locator('#game-version-trigger').click();await page.locator('#version-search').fill('1.21.1');
+ await page.getByRole('button',{name:'Minecraft 1.21.1 Quilt',exact:true}).click();
+ await page.locator('#all-versions').click();await page.locator('#downloaded-filter').click();
+ await page.waitForFunction(()=>document.querySelectorAll('#version-dialog .version-row').length===1);
+ await page.locator('#prepare-version').click();
+ await page.waitForFunction(()=>document.querySelectorAll('#version-dialog .version-row').length===2);
+ await page.screenshot({path:'output/app-preview/13-downloaded.png'});
+ await page.getByRole('button',{name:'Minecraft 1.21.1 Fabric',exact:true}).click();
+ if(await page.locator('select:visible').count())throw new Error('Native Windows selectors remain visible');
  const cores=await page.locator('#game-loader option').allTextContents();
  if(cores.join(',')!=='Vanilla,Fabric,Quilt,NeoForge')throw new Error('Core dropdown incomplete');
- await page.locator('#game-loader').selectOption('Quilt');
+ await page.locator('#game-loader').selectOption('Quilt',{force:true});
  await page.waitForFunction(()=>document.querySelector('#footer-version').textContent.includes('QUILT'));
- await page.locator('#game-loader').selectOption('NeoForge');
+ await page.locator('#game-loader').selectOption('NeoForge',{force:true});
  await page.waitForFunction(()=>document.querySelector('#footer-version').textContent.includes('NEOFORGE'));
- await page.locator('#game-loader').selectOption('Fabric');
+ await page.locator('#game-loader').selectOption('Fabric',{force:true});
  await page.locator('#profile-button').click();
  await page.locator('#offline-name').fill('KyroTestA');
  await page.getByRole('button',{name:'Добавить офлайн-аккаунт',exact:true}).click();
@@ -80,13 +103,13 @@ const fs = require('fs');
  if(!await page.locator('[data-setting="memory_gb"][data-value="8"]').evaluate(e=>e.classList.contains('selected')))throw new Error('RAM selector failed');
  await page.screenshot({path:'output/app-preview/06-java.png'});
  await page.locator('[data-page="catalog"]').click();
- await page.locator('#catalog-version').selectOption('1.21');
+ await page.locator('#catalog-version').selectOption('1.21',{force:true});
  await page.waitForFunction(()=>window.__kyroLastSearch.version==='1.21');
- await page.locator('#catalog-loader').selectOption('Vanilla');
+ await page.locator('#catalog-loader').selectOption('Vanilla',{force:true});
  await page.waitForFunction(()=>window.__kyroLastSearch.loader==='Vanilla');
- await page.locator('#catalog-loader').selectOption('Fabric');
+ await page.locator('#catalog-loader').selectOption('Fabric',{force:true});
  await page.waitForFunction(()=>window.__kyroLastSearch.loader==='Fabric');
- await page.locator('#catalog-version').selectOption('1.21.1');
+ await page.locator('#catalog-version').selectOption('1.21.1',{force:true});
  await page.waitForFunction(()=>window.__kyroLastSearch.version==='1.21.1');
  await page.getByRole('button',{name:'Установить',exact:true}).click();
  await page.locator('[data-kind="installed"]').click();
