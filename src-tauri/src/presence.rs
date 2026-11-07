@@ -218,9 +218,9 @@ fn worker(state: Weak<State>, receiver: mpsc::Receiver<Command>, status: Arc<Mut
                 *s = if !settings.discord_enabled {
                     "Discord Rich Presence выключен".into()
                 } else if id.is_empty() {
-                    "Для Discord укажи Application ID приложения KyroLauncher".into()
+                    "Подключение к Discord пока не настроено".into()
                 } else {
-                    "Application ID должен содержать 17–20 цифр".into()
+                    "Не удалось подключить активность Discord".into()
                 };
             }
             continue;
@@ -247,7 +247,7 @@ fn worker(state: Weak<State>, receiver: mpsc::Receiver<Command>, status: Arc<Mut
                 Ok(c) => client = Some(c),
                 Err(_) => {
                     if let Ok(mut s) = status.lock() {
-                        *s = "Нет подключения к Discord. Ожидаем настольный Discord или проверь Application ID.".into();
+                        *s = "Нет подключения к Discord. Запусти настольное приложение; подключение повторится автоматически.".into();
                     }
                     continue;
                 }

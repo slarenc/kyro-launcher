@@ -1802,10 +1802,8 @@ impl Launcher {
                 section(ui,"DISCORD RICH PRESENCE","Активность KYRO в твоём профиле Discord",|ui|{
                     ui.checkbox(&mut self.settings.discord_enabled,"Показывать активность в Discord");
                     ui.checkbox(&mut self.settings.discord_show_server,"Показывать адрес сервера");
-                    ui.label("Application ID · приложение KyroLauncher уже настроено");
-                    ui.add(egui::TextEdit::singleline(&mut self.settings.discord_application_id).hint_text(crate::presence::APPLICATION_ID).margin(Margin::symmetric(13,10)).desired_width(f32::INFINITY));
                     secondary(ui,self.app.presence.status());
-                    secondary(ui,"Нужен настольный Discord. Название KyroLauncher задаётся в Developer Portal. Иконка KYRO подставляется автоматически; таймер идёт с открытия лаунчера.");
+                    secondary(ui,"Работает автоматически с настольным Discord. Иконка KYRO подставляется автоматически; таймер идёт с открытия лаунчера.");
                     secondary(ui,"Адрес сервера определяется по сообщениям Minecraft в журнале игры.");
                 });
                 section(ui,"ВЕРСИЯ ЛАУНЧЕРА","Обновления KYRO",|ui|{secondary(ui,format!("KYRO {} / Rust + egui",env!("CARGO_PKG_VERSION")));if ui.button("Проверить обновления").clicked(){self.submit("check-update",Job::CheckUpdate);}if !self.update.is_null(){secondary(ui,if self.update["available"]==true{format!("Доступна {}",text(&self.update,"version"))}else{"Установлена актуальная версия".into()});if self.update["installable"]==true&&ui.button("Установить и перезапустить").clicked(){self.submit("update-launcher",Job::UpdateLauncher);}}});
