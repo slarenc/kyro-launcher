@@ -1,7 +1,11 @@
 {
   "name": "kyro-launcher-ui-tests",
-  "version": "0.5.0",
+  "version": "0.6.1",
   "private": true,
-  "scripts": { "test:ui": "node tools/ui-smoke.cjs" },
-  "devDependencies": { "playwright": "1.62.1" }
+  "scripts": {
+    "test:ui": "node tools/ui-smoke.cjs"
+  },
+  "devDependencies": {
+    "playwright": "1.62.1"
+  }
 }

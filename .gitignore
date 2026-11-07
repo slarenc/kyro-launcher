@@ -14,3 +14,4 @@
 !.env.example
 /tools/*
 !/tools/ui-smoke.cjs
+!/tools/native-smoke.ps1

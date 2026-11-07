@@ -1,6 +1,6 @@
 use crate::{
     auth, cores, net,
-    store::{safe_segment, Session, Settings, State},
+    store::{safe_segment, Session, Settings},
 };
 use futures_util::{stream, StreamExt, TryStreamExt};
 use serde_json::{json, Value};
@@ -11,14 +11,13 @@ use std::{
     process::Stdio,
     time::Instant,
 };
-use tauri::{Emitter, Manager};
 
 fn text<'a>(v: &'a Value, key: &str) -> Result<&'a str, String> {
     v[key]
         .as_str()
         .ok_or_else(|| format!("В манифесте нет поля {key}"))
 }
-pub fn progress(app: &tauri::AppHandle, message: &str, fraction: f64) {
+pub fn progress(app: &crate::app_context::AppContext, message: &str, fraction: f64) {
     let _ = app.emit("progress", json!({"message":message,"fraction":fraction}));
 }
 pub fn allowed(v: &Value) -> bool {
@@ -70,11 +69,11 @@ fn child_path(root: &Path, relative: &str) -> Result<PathBuf, String> {
     Ok(root.join(p))
 }
 pub async fn prepare(
-    app: &tauri::AppHandle,
+    app: &crate::app_context::AppContext,
     settings: &Settings,
-) -> Result<(Value, Vec<PathBuf>, PathBuf, String), String> {
+) -> Result<(Value, Vec<PathBuf>, PathBuf, String, String), String> {
     safe_segment(&settings.version)?;
-    let state = app.state::<State>();
+    let state = app.state();
     let root = &state.root;
     progress(app, "Получение манифеста Minecraft", 0.02);
     let manifest =
@@ -88,23 +87,9 @@ pub async fn prepare(
         return Err("Поддерживаются версии Minecraft 1.13 и новее".into());
     }
     let major = v["javaVersion"]["majorVersion"].as_u64().unwrap_or(17);
-    let java = tokio::process::Command::new(&settings.java_path)
-        .arg("-version")
-        .output()
-        .await
-        .map_err(|_| {
-            format!("Java не найдена. Установите Java {major} x64 и укажите java.exe в настройках")
-        })?;
-    let output = String::from_utf8_lossy(&java.stderr);
-    let java_version = output
-        .split('"')
-        .nth(1)
-        .and_then(|s| s.split('.').next())
-        .and_then(|s| s.parse::<u64>().ok())
-        .unwrap_or(0);
-    if !java.status.success() || java_version < major {
-        return Err(format!("Этой версии нужна Java {major} или новее. Выбрана Java {java_version}. Измените путь в настройках"));
-    }
+    let mut resolved = settings.clone();
+    resolved.java_path = crate::runtime::resolve(app, settings, major, false).await?;
+    let settings = &resolved;
     let client = &v["downloads"]["client"];
     let jar = root
         .join("versions")
@@ -114,7 +99,16 @@ pub async fn prepare(
     match settings.loader.as_str() {
         "Fabric" | "Quilt" => {
             progress(app, &format!("Подготовка {}", settings.loader), 0.08);
-            let profile = cores::light_profile(&settings.loader, &settings.version).await?;
+            let profile = if settings.loader_version.is_empty() {
+                cores::light_profile(&settings.loader, &settings.version).await?
+            } else {
+                cores::light_profile_version(
+                    &settings.loader,
+                    &settings.version,
+                    &settings.loader_version,
+                )
+                .await?
+            };
             cores::merge_profile(&mut v, &profile)?;
         }
         "NeoForge" => {
@@ -124,6 +118,11 @@ pub async fn prepare(
                 0.08,
             );
             let profile = cores::neoforge_profile(root, settings, &v).await?;
+            cores::merge_profile(&mut v, &profile)?;
+        }
+        "Forge" => {
+            progress(app, "Установка Forge официальным установщиком", 0.08);
+            let profile = cores::forge_profile(root, settings, &v).await?;
             cores::merge_profile(&mut v, &profile)?;
         }
         "Vanilla" => {}
@@ -286,7 +285,7 @@ pub async fn prepare(
         serde_json::to_vec(&record).map_err(|e| e.to_string())?,
     )
     .map_err(|e| e.to_string())?;
-    Ok((v, cp, natives, index_id))
+    Ok((v, cp, natives, index_id, settings.java_path.clone()))
 }
 fn arguments(list: &Value, vars: &HashMap<String, String>) -> Vec<String> {
     let mut args = Vec::new();
@@ -310,8 +309,11 @@ fn arguments(list: &Value, vars: &HashMap<String, String>) -> Vec<String> {
         })
         .collect()
 }
-pub async fn launch(app: tauri::AppHandle) -> Result<(), String> {
-    let state = app.state::<State>();
+pub async fn launch_to(
+    app: crate::app_context::AppContext,
+    server: Option<&str>,
+) -> Result<(), String> {
+    let state = app.state();
     let settings = state
         .data
         .lock()
@@ -348,8 +350,8 @@ pub async fn launch(app: tauri::AppHandle) -> Result<(), String> {
     } else {
         auth::current(&settings.microsoft_client_id).await?
     };
-    let (v, cp, natives, index) = prepare(&app, &settings).await?;
-    let game_dir = state.game_dir(&settings.version, &settings.loader);
+    let (v, cp, natives, index, java_path) = prepare(&app, &settings).await?;
+    let game_dir = state.instance_dir(&settings)?;
     fs::create_dir_all(&game_dir).map_err(|e| e.to_string())?;
     let cp = std::env::join_paths(cp)
         .map_err(|e| e.to_string())?
@@ -387,7 +389,7 @@ pub async fn launch(app: tauri::AppHandle) -> Result<(), String> {
     ] {
         vars.insert(key.to_owned(), value);
     }
-    let mut cmd = tokio::process::Command::new(&settings.java_path);
+    let mut cmd = tokio::process::Command::new(&java_path);
     cmd.current_dir(&game_dir)
         .arg(format!("-Xmx{}G", settings.memory_gb.clamp(2, 32)))
         .arg("-Xms512M");
@@ -416,6 +418,9 @@ pub async fn launch(app: tauri::AppHandle) -> Result<(), String> {
         .args(arguments(&v["arguments"]["jvm"], &vars));
     cmd.arg(text(&v, "mainClass")?)
         .args(arguments(&v["arguments"]["game"], &vars));
+    if let Some(address) = server {
+        cmd.args(crate::servers::connect_args(&settings.version, address)?);
+    }
     let log = fs::File::create(state.root.join("game.log")).map_err(|e| e.to_string())?;
     cmd.stdout(Stdio::from(log.try_clone().map_err(|e| e.to_string())?))
         .stderr(Stdio::from(log));
@@ -429,23 +434,13 @@ pub async fn launch(app: tauri::AppHandle) -> Result<(), String> {
         .map_err(|e| format!("Не удалось запустить Java: {e}"))?;
     let start = Instant::now();
     let started = chrono::Utc::now().to_rfc3339();
-    if let Some(w) = app.get_webview_window("main") {
-        match settings.launch_behavior.as_str() {
-            "hide" => {
-                let _ = w.hide();
-            }
-            "minimize" => {
-                let _ = w.minimize();
-            }
-            _ => {}
-        }
+    match settings.launch_behavior.as_str() {
+        "hide" => app.window(crate::app_context::WindowAction::Hide),
+        "minimize" => app.window(crate::app_context::WindowAction::Minimize),
+        _ => {}
     }
     let result = child.wait().await;
-    if let Some(w) = app.get_webview_window("main") {
-        let _ = w.show();
-        let _ = w.unminimize();
-        let _ = w.set_focus();
-    }
+    app.window(crate::app_context::WindowAction::Restore);
     let exit = result.map_err(|e| e.to_string())?;
     state
         .data

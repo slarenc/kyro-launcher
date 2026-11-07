@@ -5,6 +5,11 @@ use std::{fs, path::PathBuf, sync::Mutex};
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
+    pub auto_java: bool,
+    pub home_layout: String,
+    pub home_background: String,
+    pub instance_id: String,
+    pub loader_version: String,
     pub username: String,
     pub version: String,
     pub loader: String,
@@ -23,6 +28,11 @@ pub struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
+            auto_java: true,
+            home_layout: "orbit".into(),
+            home_background: String::new(),
+            instance_id: String::new(),
+            loader_version: String::new(),
             username: "Nova".into(),
             version: "1.21.1".into(),
             loader: "Fabric".into(),
@@ -58,6 +68,8 @@ pub struct Notice {
 }
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Installed {
+    #[serde(default)]
+    pub instance_id: String,
     pub project_id: String,
     pub version_id: String,
     pub name: String,
@@ -69,12 +81,27 @@ pub struct Installed {
 #[derive(Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Data {
+    pub servers: Vec<crate::servers::FavoriteServer>,
+    pub modpacks: Vec<Modpack>,
     pub settings: Settings,
     pub sessions: Vec<Session>,
     pub notices: Vec<Notice>,
     pub installed: Vec<Installed>,
     pub offline_accounts: Vec<OfflineAccount>,
     pub selected_account: Option<String>,
+}
+#[derive(Clone, Serialize, Deserialize)]
+pub struct Modpack {
+    #[serde(default)]
+    pub cover_image: String,
+    pub id: String,
+    pub project_id: String,
+    pub version_id: String,
+    pub name: String,
+    pub version_name: String,
+    pub game_version: String,
+    pub loader: String,
+    pub loader_version: String,
 }
 #[derive(Clone, Serialize, Deserialize)]
 pub struct OfflineAccount {
@@ -197,6 +224,20 @@ impl State {
             .join("instances")
             .join(format!("{version}-{loader}"))
     }
+    pub fn instance_dir(&self, settings: &Settings) -> Result<PathBuf, String> {
+        if settings.instance_id.is_empty() {
+            Ok(self.game_dir(
+                safe_segment(&settings.version)?,
+                safe_segment(&settings.loader)?,
+            ))
+        } else {
+            Ok(self
+                .root
+                .join("instances")
+                .join("modpacks")
+                .join(safe_segment(&settings.instance_id)?))
+        }
+    }
     pub fn target_path(&self, target: &str, settings: &Settings) -> Result<PathBuf, String> {
         match target {
             "launcher" => std::env::current_exe()
@@ -208,10 +249,15 @@ impl State {
             "instance" => {
                 safe_segment(&settings.version)?;
                 safe_segment(&settings.loader)?;
-                Ok(self.game_dir(&settings.version, &settings.loader))
+                self.instance_dir(settings)
             }
             "log" => Ok(self.root.join("game.log")),
             "core-log" => Ok(self.root.join("core-install.log")),
+            "screenshots" => Ok(self.instance_dir(settings)?.join("screenshots")),
+            "diagnostics" => Ok(self.instance_dir(settings)?.join("kyro-diagnostics")),
+            "profile-log" => Ok(self
+                .instance_dir(settings)?
+                .join("kyro-diagnostics/game-tail.log")),
             _ => Err("Неизвестный путь".into()),
         }
     }
@@ -286,6 +332,23 @@ mod account_tests {
         ] {
             assert!(d.add_offline(invalid).is_err());
         }
+    }
+    #[test]
+    fn packs_have_separate_game_directories() {
+        let state = State {
+            root: PathBuf::from("C:/Kyro/data"),
+            data: Mutex::new(Data::default()),
+            busy: Mutex::new(false),
+        };
+        let mut settings = Settings::default();
+        let ordinary = state.instance_dir(&settings).unwrap();
+        settings.instance_id = "packA-version1".into();
+        let a = state.instance_dir(&settings).unwrap();
+        settings.instance_id = "packB-version1".into();
+        assert_ne!(a, state.instance_dir(&settings).unwrap());
+        assert_ne!(a, ordinary);
+        settings.instance_id = "../escape".into();
+        assert!(state.instance_dir(&settings).is_err());
     }
     #[test]
     fn selection_removal_and_persistence() {

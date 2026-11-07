@@ -1,16 +1,23 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 mod auth;
+mod compatibility;
 mod cores;
+mod customization;
+mod diagnostics;
 mod game;
+mod managed_mods;
+mod modpacks;
 mod net;
+mod playtools;
+mod runtime;
+mod servers;
 mod store;
+mod updates;
 use serde_json::{json, Value};
 use std::collections::HashSet;
 use store::{safe_segment, Installed, Settings, State};
-use tauri::{Emitter, Manager};
 
-#[tauri::command]
-fn snapshot(state: tauri::State<State>) -> Result<Value, String> {
+fn snapshot(state: &State) -> Result<Value, String> {
     let d = state.data.lock().map_err(|e| e.to_string())?.clone();
     let microsoft_account =
         auth::load().map(|a| json!({"name":a.name,"uuid":a.uuid,"kind":"microsoft"}));
@@ -30,12 +37,8 @@ fn snapshot(state: tauri::State<State>) -> Result<Value, String> {
         json!({"paths":{"launcher":state.target_path("launcher",&d.settings)?,"data":state.root,"profile":state.target_path("instance",&d.settings)?},"data":d,"account":account,"microsoft_account":microsoft_account,"root":state.root,"busy":*state.busy.lock().map_err(|e|e.to_string())?}),
     )
 }
-#[tauri::command]
-fn offline_account(
-    state: tauri::State<State>,
-    action: String,
-    value: String,
-) -> Result<(), String> {
+
+fn offline_account(state: &State, action: String, value: String) -> Result<(), String> {
     let busy = state.busy.lock().map_err(|e| e.to_string())?;
     if *busy {
         return Err("Дождитесь завершения игры или установки".into());
@@ -57,8 +60,31 @@ fn offline_account(
     }
     state.save()
 }
-#[tauri::command]
-fn save_settings(state: tauri::State<State>, mut settings: Settings) -> Result<(), String> {
+
+fn save_settings(state: &State, mut settings: Settings) -> Result<(), String> {
+    customization::validate_image(&settings.home_background)?;
+    if !["orbit", "card"].contains(&settings.home_layout.as_str()) {
+        return Err("Неизвестный вид главного экрана".into());
+    }
+    if *state.busy.lock().map_err(|e| e.to_string())? {
+        return Err("Дождитесь завершения операции".into());
+    }
+    if !settings.instance_id.is_empty() {
+        let data = state.data.lock().map_err(|e| e.to_string())?;
+        let pack = data
+            .modpacks
+            .iter()
+            .find(|p| p.id == settings.instance_id)
+            .ok_or("Сборка не найдена")?;
+        if settings.version != pack.game_version || settings.loader != pack.loader {
+            settings.instance_id.clear();
+            settings.loader_version.clear();
+        } else {
+            settings.loader_version = pack.loader_version.clone();
+        }
+    } else {
+        settings.loader_version.clear();
+    }
     safe_segment(&settings.version)?;
     if !cores::LOADERS.contains(&settings.loader.as_str()) {
         return Err("Неизвестное ядро".into());
@@ -77,8 +103,8 @@ fn save_settings(state: tauri::State<State>, mut settings: Settings) -> Result<(
     state.data.lock().map_err(|e| e.to_string())?.settings = settings;
     state.save()
 }
-#[tauri::command]
-fn notices(state: tauri::State<State>, action: String, id: Option<String>) -> Result<(), String> {
+
+fn notices(state: &State, action: String, id: Option<String>) -> Result<(), String> {
     {
         let mut d = state.data.lock().map_err(|e| e.to_string())?;
         match action.as_str() {
@@ -90,7 +116,7 @@ fn notices(state: tauri::State<State>, action: String, id: Option<String>) -> Re
     }
     state.save()
 }
-#[tauri::command]
+
 async fn versions() -> Result<Value, String> {
     let v = net::json("https://piston-meta.mojang.com/mc/game/version_manifest_v2.json").await?;
     Ok(json!(v["versions"]
@@ -101,8 +127,8 @@ async fn versions() -> Result<Value, String> {
         .map(|v| v["id"].clone())
         .collect::<Vec<_>>()))
 }
-#[tauri::command]
-async fn version_library(state: tauri::State<'_, State>) -> Result<Value, String> {
+
+async fn version_library(state: &State) -> Result<Value, String> {
     let root = state.root.clone();
     let sessions = state
         .data
@@ -110,23 +136,37 @@ async fn version_library(state: tauri::State<'_, State>) -> Result<Value, String
         .map_err(|e| e.to_string())?
         .sessions
         .clone();
+    let saved_version = state
+        .data
+        .lock()
+        .map_err(|e| e.to_string())?
+        .settings
+        .version
+        .clone();
+    let mut warning = String::new();
     let cache = root.join("metadata/version-library.json");
-    let manifest =
-        match net::json("https://piston-meta.mojang.com/mc/game/version_manifest_v2.json").await {
-            Ok(v) => {
-                if let Some(parent) = cache.parent() {
-                    let _ = std::fs::create_dir_all(parent);
-                }
-                if let Ok(bytes) = serde_json::to_vec(&v) {
-                    let _ = std::fs::write(&cache, bytes);
-                }
-                v
+    let manifest = match net::json(
+        "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json",
+    )
+    .await
+    {
+        Ok(v) => {
+            if let Some(parent) = cache.parent() {
+                let _ = std::fs::create_dir_all(parent);
             }
-            Err(_) => std::fs::read(&cache)
+            if let Ok(bytes) = serde_json::to_vec(&v) {
+                let _ = std::fs::write(&cache, bytes);
+            }
+            v
+        }
+        Err(_error) => {
+            warning = "Не удалось обновить список Minecraft. Проверь подключение и нажми «Обновить список». Показаны сохранённые версии.".into();
+            std::fs::read(&cache)
                 .ok()
                 .and_then(|bytes| serde_json::from_slice(&bytes).ok())
-                .unwrap_or_else(|| json!({"versions":[]})),
-        };
+                .unwrap_or_else(|| json!({"versions":[]}))
+        }
+    };
     let mut releases: Vec<_> = manifest["versions"]
         .as_array()
         .into_iter()
@@ -180,9 +220,12 @@ async fn version_library(state: tauri::State<'_, State>) -> Result<Value, String
             releases.push(json!({"id":profile["version"],"date":null}));
         }
     }
-    Ok(json!({"releases":releases,"prepared":prepared}))
+    if !releases.iter().any(|r| r["id"] == saved_version) {
+        releases.push(json!({"id":saved_version,"date":null}));
+    }
+    Ok(json!({"releases":releases,"prepared":prepared,"warning":warning}))
 }
-#[tauri::command]
+
 async fn search_modrinth(
     query: String,
     kind: String,
@@ -224,7 +267,7 @@ async fn search_modrinth(
 async fn compatible(project: &str, kind: &str, s: &Settings) -> Result<Value, String> {
     safe_segment(project)?;
     let mut query = vec![("game_versions", json!([s.version]).to_string())];
-    if kind == "mod" {
+    if kind == "mod" || kind == "modpack" {
         query.push(("loaders", json!([s.loader.to_lowercase()]).to_string()));
     }
     let v: Value = net::client()?
@@ -246,15 +289,18 @@ async fn compatible(project: &str, kind: &str, s: &Settings) -> Result<Value, St
         .ok_or("Нет совместимой версии для выбранного Minecraft и загрузчика".into())
 }
 async fn install_impl(
-    app: &tauri::AppHandle,
+    app: &crate::app_context::AppContext,
     project: String,
     name: String,
     kind: String,
 ) -> Result<(), String> {
+    if kind == "modpack" {
+        return modpacks::install(app, &project, &name).await;
+    }
     if !["mod", "shader", "resourcepack"].contains(&kind.as_str()) {
         return Err("Сборки .mrpack пока не поддерживаются. Можно устанавливать моды, шейдеры и ресурспаки.".into());
     }
-    let state = app.state::<State>();
+    let state = app.state();
     let s = state
         .data
         .lock()
@@ -262,7 +308,7 @@ async fn install_impl(
         .settings
         .clone();
     if kind == "mod" && s.loader == "Vanilla" {
-        return Err("Для модов выберите Fabric, Quilt или NeoForge".into());
+        return Err("Для модов выберите Fabric, Quilt, Forge или NeoForge".into());
     }
     let mut queue = vec![(project, name, None::<String>)];
     let mut seen = HashSet::new();
@@ -316,12 +362,10 @@ async fn install_impl(
             _ => "resourcepacks",
         };
         game::progress(app, &format!("Установка: {title}"), 0.5);
-        let dest = state
-            .game_dir(&s.version, &s.loader)
-            .join(folder)
-            .join(filename);
+        let dest = state.instance_dir(&s)?.join(folder).join(filename);
         net::download(url, &dest, Some(sha)).await?;
         installed.push(Installed {
+            instance_id: s.instance_id.clone(),
             project_id: id,
             version_id: v["id"].as_str().ok_or("Нет версии проекта")?.into(),
             name: title,
@@ -361,6 +405,7 @@ async fn install_impl(
                 .iter()
                 .filter(|o| {
                     o.project_id == item.project_id
+                        && o.instance_id == s.instance_id
                         && o.game_version == s.version
                         && o.loader == s.loader
                         && o.filename != item.filename
@@ -373,15 +418,11 @@ async fn install_impl(
                     "shader" => "shaderpacks",
                     _ => "resourcepacks",
                 };
-                let _ = std::fs::remove_file(
-                    state
-                        .game_dir(&s.version, &s.loader)
-                        .join(folder)
-                        .join(o.filename),
-                );
+                let _ = std::fs::remove_file(state.instance_dir(&s)?.join(folder).join(o.filename));
             }
             d.installed.retain(|o| {
                 !(o.project_id == item.project_id
+                    && o.instance_id == s.instance_id
                     && o.game_version == s.version
                     && o.loader == s.loader)
             });
@@ -395,15 +436,15 @@ async fn install_impl(
     );
     Ok(())
 }
-#[tauri::command]
+
 async fn install_mod(
-    app: tauri::AppHandle,
+    app: crate::app_context::AppContext,
     project: String,
     name: String,
     kind: String,
 ) -> Result<(), String> {
     {
-        let state = app.state::<State>();
+        let state = app.state();
         let mut busy = state.busy.lock().map_err(|e| e.to_string())?;
         if *busy {
             return Err("Дождитесь завершения текущей операции".into());
@@ -411,25 +452,30 @@ async fn install_mod(
         *busy = true;
     }
     let result = install_impl(&app, project, name, kind).await;
-    *app.state::<State>()
-        .busy
-        .lock()
-        .map_err(|e| e.to_string())? = false;
+    *app.state().busy.lock().map_err(|e| e.to_string())? = false;
     let _ = app.emit("state-changed", ());
     result
 }
-#[tauri::command]
-async fn launch_game(app: tauri::AppHandle) -> Result<(), String> {
+
+async fn launch_game(app: crate::app_context::AppContext) -> Result<(), String> {
+    run_launch(app, None).await
+}
+pub(crate) async fn run_launch(
+    app: crate::app_context::AppContext,
+    server: Option<String>,
+) -> Result<(), String> {
     {
-        let state = app.state::<State>();
+        let state = app.state();
         let mut busy = state.busy.lock().map_err(|e| e.to_string())?;
         if *busy {
             return Err("Игра уже запущена или идёт установка".into());
         }
         *busy = true;
     }
-    let result = game::launch(app.clone()).await;
-    let state = app.state::<State>();
+    let record = diagnostics::start(&app);
+    let result = game::launch_to(app.clone(), server.as_deref()).await;
+    diagnostics::finish(&app, record, &result);
+    let state = app.state();
     *state.busy.lock().map_err(|e| e.to_string())? = false;
     if let Err(e) = &result {
         state.notify("Не удалось запустить Minecraft", e);
@@ -437,10 +483,10 @@ async fn launch_game(app: tauri::AppHandle) -> Result<(), String> {
     let _ = app.emit("state-changed", ());
     result
 }
-#[tauri::command]
-async fn verify_files(app: tauri::AppHandle) -> Result<(), String> {
+
+async fn verify_files(app: crate::app_context::AppContext) -> Result<(), String> {
     let s = {
-        let state = app.state::<State>();
+        let state = app.state();
         let mut busy = state.busy.lock().map_err(|e| e.to_string())?;
         if *busy {
             return Err("Дождитесь текущей операции".into());
@@ -455,15 +501,15 @@ async fn verify_files(app: tauri::AppHandle) -> Result<(), String> {
         s
     };
     let result = game::prepare(&app, &s).await.map(|_| ());
-    let state = app.state::<State>();
+    let state = app.state();
     *state.busy.lock().map_err(|e| e.to_string())? = false;
     if result.is_ok() {
         state.notify("Файлы проверены", "Minecraft готов к запуску");
     }
     result
 }
-#[tauri::command]
-fn open_folder(state: tauri::State<State>, target: String) -> Result<String, String> {
+
+fn open_folder(state: &State, target: String) -> Result<String, String> {
     let settings = state
         .data
         .lock()
@@ -471,7 +517,7 @@ fn open_folder(state: tauri::State<State>, target: String) -> Result<String, Str
         .settings
         .clone();
     let path = state.target_path(&target, &settings)?;
-    if target == "log" || target == "core-log" {
+    if target == "log" || target == "core-log" || target == "profile-log" {
         if !path.exists() {
             return Err("Лог появится после первого запуска игры".into());
         }
@@ -493,8 +539,8 @@ fn open_folder(state: tauri::State<State>, target: String) -> Result<String, Str
     }
     Ok(path.to_string_lossy().into_owned())
 }
-#[tauri::command]
-async fn login_begin(state: tauri::State<'_, State>) -> Result<Value, String> {
+
+async fn login_begin(state: &State) -> Result<Value, String> {
     let id = state
         .data
         .lock()
@@ -504,8 +550,8 @@ async fn login_begin(state: tauri::State<'_, State>) -> Result<Value, String> {
         .clone();
     auth::begin(&id).await
 }
-#[tauri::command]
-async fn login_poll(state: tauri::State<'_, State>, code: String) -> Result<Value, String> {
+
+async fn login_poll(state: &State, code: String) -> Result<Value, String> {
     let id = state
         .data
         .lock()
@@ -524,11 +570,11 @@ async fn login_poll(state: tauri::State<'_, State>, code: String) -> Result<Valu
     }
     Ok(result)
 }
-#[tauri::command]
+
 fn logout() -> Result<(), String> {
     auth::logout()
 }
-#[tauri::command]
+
 fn open_microsoft_login(url: String) -> Result<(), String> {
     if ![
         "https://www.microsoft.com/link",
@@ -545,44 +591,20 @@ fn open_microsoft_login(url: String) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
     Ok(())
 }
+mod app_context;
+mod native_ui;
 fn main() {
-    tauri::Builder::default()
-        .manage(State::new())
-        .setup(|app| {
-            if std::env::var("KYRO_UI_TEST").as_deref() != Ok("1") {
-                if let Some(window) = app.get_webview_window("main") {
-                    window.show()?;
-                }
-            }
-            Ok(())
-        })
-        .on_window_event(|window, event| {
-            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                if window.state::<State>().busy.lock().is_ok_and(|busy| *busy) {
-                    api.prevent_close();
-                    let _ = window.emit("close-blocked", ());
-                }
-            }
-        })
-        .invoke_handler(tauri::generate_handler![
-            snapshot,
-            offline_account,
-            save_settings,
-            notices,
-            versions,
-            version_library,
-            search_modrinth,
-            install_mod,
-            launch_game,
-            verify_files,
-            open_folder,
-            login_begin,
-            login_poll,
-            logout,
-            open_microsoft_login
-        ])
-        .run(tauri::generate_context!())
-        .expect("Ошибка запуска KYRO Launcher");
+    if updates::handle_cli() {
+        return;
+    }
+    if let Err(e) = native_ui::run() {
+        eprintln!("KYRO: {e}");
+        rfd::MessageDialog::new()
+            .set_title("KYRO — ошибка запуска")
+            .set_description(e.to_string())
+            .set_level(rfd::MessageLevel::Error)
+            .show();
+    }
 }
 
 #[cfg(test)]

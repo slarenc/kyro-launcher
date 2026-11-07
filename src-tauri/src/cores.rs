@@ -5,7 +5,7 @@ use crate::{
 use serde_json::{json, Value};
 use std::{fs, path::Path, process::Stdio};
 
-pub const LOADERS: [&str; 4] = ["Vanilla", "Fabric", "Quilt", "NeoForge"];
+pub const LOADERS: [&str; 5] = ["Vanilla", "Fabric", "Quilt", "Forge", "NeoForge"];
 fn version_key(s: &str) -> Vec<u32> {
     s.split(|c: char| !c.is_ascii_digit())
         .filter_map(|x| x.parse().ok())
@@ -21,12 +21,26 @@ pub fn newest(mut versions: Vec<String>) -> Result<String, String> {
         .ok_or("Для этой версии Minecraft нет совместимого ядра".into())
 }
 pub async fn light_profile(loader: &str, game: &str) -> Result<Value, String> {
+    light_profile_version(loader, game, "").await
+}
+pub async fn light_profile_version(
+    loader: &str,
+    game: &str,
+    pinned: &str,
+) -> Result<Value, String> {
     safe_segment(game)?;
     let base = match loader {
         "Fabric" => "https://meta.fabricmc.net/v2",
         "Quilt" => "https://meta.quiltmc.org/v3",
         _ => return Err("Неизвестное ядро".into()),
     };
+    if !pinned.is_empty() {
+        safe_segment(pinned)?;
+        return net::json(&format!(
+            "{base}/versions/loader/{game}/{pinned}/profile/json"
+        ))
+        .await;
+    }
     let list = net::json(&format!("{base}/versions/loader/{game}")).await?;
     let versions = list
         .as_array()
@@ -116,16 +130,56 @@ pub async fn neoforge_profile(
     settings: &Settings,
     base: &Value,
 ) -> Result<Value, String> {
-    let version = neo_version(&settings.version).await?;
+    installer_profile(root, settings, base, false).await
+}
+pub async fn forge_profile(
+    root: &Path,
+    settings: &Settings,
+    base: &Value,
+) -> Result<Value, String> {
+    installer_profile(root, settings, base, true).await
+}
+async fn installer_profile(
+    root: &Path,
+    settings: &Settings,
+    base: &Value,
+    forge: bool,
+) -> Result<Value, String> {
+    let version = if settings.loader_version.is_empty() {
+        if forge {
+            let promos = net::json(
+                "https://files.minecraftforge.net/net/minecraftforge/forge/promotions_slim.json",
+            )
+            .await?;
+            promos["promos"][format!("{}-recommended", settings.version)]
+                .as_str()
+                .or_else(|| promos["promos"][format!("{}-latest", settings.version)].as_str())
+                .ok_or("Нет Forge для выбранной версии Minecraft")?
+                .to_string()
+        } else {
+            neo_version(&settings.version).await?
+        }
+    } else {
+        settings.loader_version.clone()
+    };
     safe_segment(&version)?;
-    let id = format!("neoforge-{version}");
+    let core = if forge { "Forge" } else { "NeoForge" };
+    let id = if forge {
+        format!("{}-forge-{version}", settings.version)
+    } else {
+        format!("neoforge-{version}")
+    };
     let profile_path = root.join("versions").join(&id).join(format!("{id}.json"));
     let marker = root.join("metadata").join(format!("{id}.installed"));
     if marker.exists() && profile_path.exists() {
         return serde_json::from_slice(&fs::read(profile_path).map_err(|e| e.to_string())?)
             .map_err(|e| e.to_string());
     }
-    let url=format!("https://maven.neoforged.net/releases/net/neoforged/neoforge/{version}/neoforge-{version}-installer.jar");
+    let url = if forge {
+        format!("https://maven.minecraftforge.net/net/minecraftforge/forge/{}-{version}/forge-{}-{version}-installer.jar",settings.version,settings.version)
+    } else {
+        format!("https://maven.neoforged.net/releases/net/neoforged/neoforge/{version}/neoforge-{version}-installer.jar")
+    };
     let sha = net::client()?
         .get(format!("{url}.sha1"))
         .send()
@@ -164,7 +218,11 @@ pub async fn neoforge_profile(
         .arg("-Djava.awt.headless=true")
         .arg("-jar")
         .arg(&installer)
-        .arg("--install-client")
+        .arg(if forge {
+            "--installClient"
+        } else {
+            "--install-client"
+        })
         .arg(root)
         .stdout(Stdio::from(log.try_clone().map_err(|e| e.to_string())?))
         .stderr(Stdio::from(log));
@@ -174,10 +232,10 @@ pub async fn neoforge_profile(
     }
     let mut child = command
         .spawn()
-        .map_err(|e| format!("Не удалось запустить установщик NeoForge: {e}"))?;
+        .map_err(|e| format!("Не удалось запустить установщик {core}: {e}"))?;
     let status = child.wait().await.map_err(|e| e.to_string())?;
     if !status.success() {
-        return Err(format!("Установка NeoForge завершилась с кодом {:?}. Подробности: core-install.log в папке данных лаунчера",status.code()));
+        return Err(format!("Установка {core} завершилась с кодом {:?}. Подробности: core-install.log в папке данных лаунчера",status.code()));
     }
     let profile: Value = serde_json::from_slice(
         &fs::read(&profile_path)

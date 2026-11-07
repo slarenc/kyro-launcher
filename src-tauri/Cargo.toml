@@ -1,14 +1,14 @@
 [package]
 name = "kyro-launcher"
-version = "0.5.0"
+version = "0.7.0"
 description = "KYRO Minecraft Launcher"
 edition = "2021"
 
-[build-dependencies]
-tauri-build = { version = "2", features = [] }
-
 [dependencies]
-tauri = { version = "2", features = [] }
+eframe = { version = "=0.33.3", default-features = false, features = ["default_fonts", "glow", "x11", "wayland"] }
+egui_extras = { version = "=0.33.3", features = ["all_loaders"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp"] }
+rfd = "0.15"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
@@ -22,3 +22,8 @@ md-5 = "0.10"
 dirs = "6"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 keyring = { version = "3", features = ["windows-native"] }
+base64 = "0.22"
+semver = "1"
+toml = "0.8"
+[build-dependencies]
+winresource = "0.1"

@@ -5,7 +5,7 @@ window.KyroPickers = (() => {
  const chevron='<svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 7.5 5 5 5-5"/></svg>';
  const check='<svg viewBox="0 0 20 20" aria-hidden="true"><path d="m4 10 4 4 8-8"/></svg>';
  const searchIcon='<svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5"/><path d="m13 13 4 4"/></svg>';
- const cores=['Vanilla','Fabric','Quilt','NeoForge'];
+ const cores=['Vanilla','Fabric','Quilt','Forge','NeoForge'];
  const coreClass=l=>l.toLowerCase().replace(/[^a-z]/g,'');
  let config, menu, trigger, dialog, library, query='',downloaded=false,loading=false,opening=false,restoreFocus;
  const closed=new Set();
@@ -63,7 +63,7 @@ window.KyroPickers = (() => {
    if(!allRows.length)return '';rows+=allRows.length;groups++;
    const expanded=term||downloaded?true:(release.id===current.version||index<3)?!closed.has(release.id):false;
    const date=release.date?new Date(release.date).toLocaleDateString('ru-RU',{day:'numeric',month:'short'}).replace('.',''):'';
-   return `<details class="version-group" data-group="${esc(release.id)}" ${expanded?'open':''}><summary>${chevron}<strong>${esc(release.id)}</strong><small>${allRows.length} ${allRows.length===1?'ядро':'ядра'}</small></summary><div>${allRows.map(loader=>{
+   return `<details class="version-group" data-group="${esc(release.id)}" ${expanded?'open':''}><summary>${chevron}<strong>${esc(release.id)}</strong><small>${allRows.length} ${allRows.length===1?'ядро':allRows.length>=5?'ядер':'ядра'}</small></summary><div>${allRows.map(loader=>{
     const active=current.version===release.id&&current.loader===loader,installed=ready.has(release.id+'/'+loader);
     return `<button type="button" class="version-row ${active?'selected':''}" data-version="${esc(release.id)}" data-core="${loader}" aria-label="Minecraft ${esc(release.id)} ${loader}" aria-pressed="${active}" ${current.busy?'disabled':''}><span class="version-row-id">${esc(release.id)}</span><span class="core-tag core-${coreClass(loader)}">${loader}</span><span class="version-row-meta">${installed?'<span class="downloaded-dot" title="Файлы подготовлены">↓</span>':''}<time>${esc(date)}</time>${active?check:'<span class="option-check"></span>'}</span></button>`;
    }).join('')}</div></details>`;

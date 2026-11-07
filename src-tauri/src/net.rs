@@ -7,7 +7,11 @@ pub fn client() -> Result<reqwest::Client, String> {
         return Ok(client.clone());
     }
     let client = reqwest::Client::builder()
-        .user_agent("KyroLauncher/0.1.0 (desktop Minecraft launcher)")
+        .user_agent(concat!(
+            "KyroLauncher/",
+            env!("CARGO_PKG_VERSION"),
+            " (native Minecraft launcher)"
+        ))
         .timeout(Duration::from_secs(120))
         .connect_timeout(Duration::from_secs(15))
         .pool_max_idle_per_host(16)
@@ -58,6 +62,57 @@ pub async fn download(url: &str, path: &Path, sha: Option<&str>) -> Result<(), S
             .map_err(|e| e.to_string())?;
     }
     let part = path.with_extension("kyro-part");
+    tokio::fs::write(&part, bytes)
+        .await
+        .map_err(|e| e.to_string())?;
+    if path.exists() {
+        tokio::fs::remove_file(path)
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+    tokio::fs::rename(part, path)
+        .await
+        .map_err(|e| e.to_string())
+}
+pub async fn download_sha256(url: &str, path: &Path, hash: &str) -> Result<(), String> {
+    use sha2::Sha256;
+    if hash.len() != 64
+        || !hash.bytes().all(|b| b.is_ascii_hexdigit())
+        || !url.starts_with("https://")
+    {
+        return Err("Некорректный адрес или SHA-256".into());
+    }
+    if let Ok(bytes) = tokio::fs::read(path).await {
+        if format!("{:x}", Sha256::digest(&bytes)).eq_ignore_ascii_case(hash) {
+            return Ok(());
+        }
+    }
+    let mut response = client()?
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .error_for_status()
+        .map_err(|e| e.to_string())?;
+    if response.url().scheme() != "https" {
+        return Err("Перенаправление на небезопасный адрес".into());
+    }
+    let mut bytes = Vec::new();
+    while let Some(chunk) = response.chunk().await.map_err(|e| e.to_string())? {
+        if bytes.len() + chunk.len() > 1024 * 1024 * 1024 {
+            return Err("Файл слишком большой".into());
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    if !format!("{:x}", Sha256::digest(&bytes)).eq_ignore_ascii_case(hash) {
+        return Err("SHA-256 загруженного файла не совпал".into());
+    }
+    if let Some(parent) = path.parent() {
+        tokio::fs::create_dir_all(parent)
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+    let part = path.with_extension("part");
     tokio::fs::write(&part, bytes)
         .await
         .map_err(|e| e.to_string())?;
