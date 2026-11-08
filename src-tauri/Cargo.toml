@@ -1,6 +1,6 @@
 [package]
 name = "kyro-launcher"
-version = "0.7.2"
+version = "0.7.3"
 description = "KYRO Minecraft Launcher"
 edition = "2021"
 license = "MIT"

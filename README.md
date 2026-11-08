@@ -2,6 +2,8 @@
 
 Независимый лаунчер Minecraft Java Edition для Windows x64 на **Rust + Tauri 2**. Компактный интерфейс Compact Plus: тёмное оформление, орбита, встроенный Inter и палитра из девяти цветов.
 
+**[Скачать лаунчер для Windows x64](https://github.com/slarenc/kyro-launcher/releases/latest)**
+
 KYRO не связан с Mojang или Microsoft и не одобрен ими. Minecraft и другие товарные знаки принадлежат их правообладателям.
 
 ## Возможности
