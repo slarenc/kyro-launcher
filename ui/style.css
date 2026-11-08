@@ -89,3 +89,5 @@ select.native-select-source{display:none!important}
 .fps-boost{display:block;margin-top:12px;color:var(--accent);font-size:12px}.fps-rows{max-height:45vh;overflow:auto}#cancel-launch{color:var(--accent);margin-left:auto}
 
 .fps-boost.has-boost{background:var(--accent-wash);border-color:var(--accent);box-shadow:0 0 16px color-mix(in srgb,var(--accent) 15%,transparent)}
+
+.home .version-controls{gap:10px;flex-wrap:nowrap}.home .version-controls .lux-select{width:100px;flex-shrink:0}.version-controls .fps-boost,.version-controls .home-folder{display:inline-flex;align-items:center;gap:5px;margin:0;padding:7px 4px;border:1px solid transparent;background:transparent;font-size:12px;white-space:nowrap;color:var(--muted)}.version-controls .home-folder .icon{width:16px;height:16px}.version-controls .fps-boost:hover,.version-controls .home-folder:hover{color:var(--accent)}.version-controls .fps-boost.has-boost{color:var(--accent);background:var(--accent-wash);border-color:var(--accent)}
