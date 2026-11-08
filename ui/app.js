@@ -60,7 +60,7 @@ function render(){
  window.KyroPickers.enhance($('#page'));
 }
 function packSelector(){const packs=state.data.modpacks||[];return packs.length?`<label class="pack-selector">Игровой профиль<select id="active-modpack" aria-label="Игровой профиль" ${state.busy?'disabled':''}><option value="">Обычный профиль</option>${packs.map(p=>`<option value="${esc(p.id)}" ${p.id===s().instance_id?'selected':''}>${esc(p.name)} · ${esc(p.version_name)}</option>`).join('')}</select></label>`:'';}
-function home(){const selected=(state.data.modpacks||[]).find(p=>p.id===s().instance_id),candidate=selected?.cover_image||s().home_background||'',image=/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(candidate)?candidate:'';return `<div class="home ${s().home_layout==='card'?'home-card':''} ${image?'has-image':''}">${image?`<div class="home-image" aria-hidden="true" style="background-image:url('${esc(image)}')"></div>`:''}<div class="home-copy"><div class="eyebrow">MINECRAFT · JAVA EDITION</div>${packSelector()}<div class="version-display">${esc(s().version)}</div><select class="loader-display core-select" id="game-loader" aria-label="Ядро Minecraft" ${state.busy||s().instance_id?'disabled':''}>${['Vanilla','Fabric','Quilt','Forge','NeoForge'].map(l=>`<option ${l===s().loader?'selected':''}>${l}</option>`).join('')}</select><div class="version-controls"><select id="game-version" aria-label="Версия Minecraft" ${s().instance_id?'disabled':''}>${[...new Set([s().version,...releaseVersions])].map(v=>`<option ${v===s().version?'selected':''}>${esc(v)}</option>`).join('')}</select><span class="divider"></span><button class="text-button" id="all-versions">ВСЕ ВЕРСИИ</button></div><button class="primary play-button" id="play" ${state.busy?'disabled':''}>${icon('play')}<span>${state.busy?'ЗАПУСК…':'Играть'}</span></button><div class="home-note">${s().instance_id?'Выбрана сборка. Нажми «Играть», чтобы запустить её.':state.account?'Всё готово к твоей следующей истории.':'Добавь офлайн-аккаунт по нику или войди через Microsoft — нажми на профиль внизу меню.'}</div></div><div class="home-orbit"></div><span class="orbit-caption">JAVA EDITION / 01</span></div>`;}
+function home(){const selected=(state.data.modpacks||[]).find(p=>p.id===s().instance_id),candidate=selected?.cover_image||s().home_background||'',image=/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(candidate)?candidate:'';return `<div class="home ${s().home_layout==='card'?'home-card':''} ${image?'has-image':''}">${image?`<div class="home-image" aria-hidden="true" style="background-image:url('${esc(image)}')"></div>`:''}<div class="home-copy"><div class="eyebrow">MINECRAFT · JAVA EDITION</div>${packSelector()}<div class="version-display">${esc(s().version)}</div><select class="loader-display core-select" id="game-loader" aria-label="Ядро Minecraft" ${state.busy||s().instance_id?'disabled':''}>${['Vanilla','Fabric','Quilt','Forge','NeoForge'].map(l=>`<option ${l===s().loader?'selected':''}>${l}</option>`).join('')}</select><div class="version-controls"><select id="game-version" aria-label="Версия Minecraft" ${s().instance_id?'disabled':''}>${[...new Set([s().version,...releaseVersions])].map(v=>`<option ${v===s().version?'selected':''}>${esc(v)}</option>`).join('')}</select><span class="divider"></span><button class="text-button" id="all-versions">ВСЕ ВЕРСИИ</button></div><button class="primary play-button" id="play" ${state.busy&&!state.launch?.can_cancel?'disabled':''}>${icon('play')}<span>${state.launch?.can_cancel?'Отменить':state.busy?'ЗАПУСК…':'Играть'}</span></button><button id="fps-boost" class="fps-boost" ${state.busy?'disabled':''}>⚡ FPS-буст</button><div class="home-note">${s().instance_id?'Выбрана сборка. Нажми «Играть», чтобы запустить её.':state.account?'Всё готово к твоей следующей истории.':'Добавь офлайн-аккаунт по нику или войди через Microsoft — нажми на профиль внизу меню.'}</div></div><div class="home-orbit"></div><span class="orbit-caption">JAVA EDITION / 01</span></div>`;}
 function activity(){
  const sessions=state.data.sessions;
  const total=sessions.reduce((n,x)=>n+x.seconds,0), byDay=new Map();
@@ -121,6 +121,7 @@ function settings(){
  section('ЯЗЫК','Язык интерфейса лаунчера.','<p class="help">Русский. Английская локализация появится в следующей версии.</p>')+
  section('ОФОРМЛЕНИЕ','Твой стиль. Ничего лишнего.',`<div class="setting-row"><span>Тема</span>${segments('theme',[['dark','Тёмная'],['midnight','Полночь'],['black','Чёрная'],['light','Светлая']])}</div><div class="setting-row palette-row"><span>Палитра</span>${colorPalette()}</div>`)+
  section('ПРИ ЗАПУСКЕ ИГРЫ','Что делать с окном лаунчера.',segments('launch_behavior',[['hide','Скрыть'],['minimize','Свернуть'],['open','Оставить открытым']])+'<p>После закрытия игры лаунчер вернётся.</p>')+
+ section('DISCORD','Показывать активность Minecraft.',`<label class="setting-row">Активность Discord<input type="checkbox" id="discord-enabled" ${s().discord_enabled!==false?'checked':''}></label><label class="setting-row">Показывать адрес сервера<input type="checkbox" id="discord-server" ${s().discord_show_server!==false?'checked':''}></label>`)+
  section('УЧЁТНАЯ ЗАПИСЬ','Minecraft Java Edition.',`<div class="setting-row"><span>${esc(state.account?.name||'Аккаунт не выбран')}</span><button id="settings-account">${state.account?'Управлять':'Добавить аккаунт'}</button></div>`);
  if(settingsTab==='java')content=`<div class="technical-grid"><div>`+
  section('ПАМЯТЬ',`${s().memory_gb} ГБ выделено для игры.`,segments('memory_gb',[[2,'2 ГБ'],[4,'4 ГБ'],[6,'6 ГБ'],[8,'8 ГБ'],[12,'12 ГБ']])+`<input type="range" id="memory-range" aria-label="Память в ГБ" min="2" max="32" value="${s().memory_gb}"><p>Выделяй не больше половины доступной RAM.</p>`)+
@@ -133,13 +134,15 @@ function settings(){
  return heading('Настройки')+`<div class="tabs">${[['general','Основные'],['java','Java и память'],['downloads','Загрузки'],['game','Профили графики']].map(([key,label])=>`<button data-settings-tab="${key}" class="${settingsTab===key?'selected':''}">${label}</button>`).join('')}</div>${content}<div class="settings-end"><span id="save-status">Изменения сохраняются автоматически</span><span>KYRO / 0.6.1</span></div>`;
 }
 function bind(){
+ for(const [id,key] of [['discord-enabled','discord_enabled'],['discord-server','discord_show_server']]){const input=$('#'+id);if(input)input.onchange=()=>{s()[key]=input.checked;persist();};}
  const pack=$('#active-modpack');if(pack)pack.onchange=async()=>{try{await invoke('select_modpack',{id:pack.value});await sync();catalogData=null;render();}catch(e){failure(e);}};
  $$('[data-launch-pack]').forEach(b=>b.onclick=async()=>{try{await invoke('select_modpack',{id:b.dataset.launchPack});await sync();navigate('play');await runOperation('Запуск сборки…',async()=>{if(!await window.KyroAssist.confirmCompatibility())return false;await invoke('launch_game');},true);}catch(e){failure(e);}});
  const core=$('#game-loader');if(core)core.onchange=async()=>{s().loader=core.value;catalogData=null;if(await persist()){await sync();render();}};
  $$('[data-loader]').forEach(b=>b.onclick=async()=>{s().loader=b.dataset.loader;catalogData=null;if(await persist())render();});
  const version=$('#game-version');if(version)version.onchange=async()=>{s().version=version.value;catalogData=null;if(await persist()){await sync();render();}};
  if($('#all-versions'))$('#all-versions').onclick=e=>window.KyroPickers.openVersions(e.currentTarget);
- if($('#play'))$('#play').onclick=()=>runOperation('Подготовка Minecraft…',async()=>{if(!await persist())return false;if(!await window.KyroAssist.confirmCompatibility())return false;await invoke('launch_game');},true);
+ if($('#fps-boost'))$('#fps-boost').onclick=openFpsBoost;
+ if($('#play'))$('#play').onclick=()=>state.launch?.can_cancel?$('#cancel-launch').click():runOperation('Подготовка Minecraft…',async()=>{if(!await persist())return false;if(!await window.KyroAssist.confirmCompatibility())return false;await invoke('launch_game');},true);
  if($('#activity-year'))$('#activity-year').onchange=e=>{year=Number(e.target.value);render();};
  $$('[data-kind]').forEach(b=>b.onclick=()=>{catalogKind=b.dataset.kind;catalogOffset=0;catalogData=null;catalogSeq++;catalogLoading=false;render();if(catalogKind!=='installed')loadCatalog();});
  if($('#catalog-search'))$('#catalog-search').onsubmit=e=>{e.preventDefault();catalogQuery=$('#search-query').value.trim();catalogOffset=0;loadCatalog();};
@@ -163,10 +166,10 @@ function bind(){
 }
 async function runOperation(message,task,isGame=false){
  if(state.busy)return toast('Дождитесь завершения текущей операции.');
- state.busy=true;$('#operation').hidden=false;$('#operation-label').textContent=message;$('#operation-progress').value=0.01;updateChrome();render();
+ state.busy=true;$('#operation').hidden=false;$('#operation-label').textContent=message;$('#operation-progress').value=0.01;updateChrome();render();$('#cancel-launch').hidden=true;
  try{const result=await task();if(result===false)return false;toast(isGame?'Игровая сессия завершена.':'Готово.');return true;}
- catch(e){failure(e);if(isGame)navigate('diagnostics');return false;}
- finally{state.busy=false;$('#operation').hidden=true;await sync().catch(failure);render();}
+ catch(e){if(String(e)==='Запуск отменён'){toast('Запуск отменён.');return false;}failure(e);if(isGame)navigate('diagnostics');return false;}
+ finally{state.busy=false;$('#cancel-launch').hidden=true;$('#operation').hidden=true;await sync().catch(failure);render();}
 }
 function openAccount(){
  clearTimeout(loginTimer);const dialog=$('#account-dialog');
@@ -193,6 +196,7 @@ function openAccount(){
  };
 }
 $('#profile-button').onclick=openAccount;$('#dialog-close').onclick=()=>{$('#account-dialog').close();clearTimeout(loginTimer);};
+$('#cancel-launch').onclick=async()=>{try{const accepted=await invoke('cancel_launch');toast(accepted?'Отменяем подготовку…':'Отмена подготовки сейчас недоступна.');}catch(e){failure(e);}};
 $('#operation-dismiss').onclick=()=>$('#operation').hidden=true;
 $('#minimize').onclick=()=>native&&window.__TAURI__.window.getCurrentWindow().minimize();
 $('#maximize').onclick=()=>native&&window.__TAURI__.window.getCurrentWindow().toggleMaximize();
@@ -200,7 +204,7 @@ $('#close').onclick=()=>{if(state.busy){toast('Дождитесь заверше
 async function boot(){
  if(native)setTimeout(()=>window.KyroFeatures.checkUpdate(true),3000);
  try{if(!native){const saved=JSON.parse(localStorage.getItem('kyro-preview-settings')||'null');if(saved)saved&&Object.assign(state.data.settings,saved);}await sync();render();
- if(native){await window.__TAURI__.event.listen('progress',e=>{$('#operation').hidden=false;$('#operation-label').textContent=e.payload.message;$('#operation-progress').value=e.payload.fraction;window.KyroPickers.progress(e.payload.message);});await window.__TAURI__.event.listen('state-changed',async()=>{await sync();render();});await window.__TAURI__.event.listen('close-blocked',()=>toast('Дождитесь завершения игры или установки.'));
+ if(native){await window.__TAURI__.event.listen('launch-state',e=>{state.launch=e.payload;$('#cancel-launch').hidden=!e.payload.can_cancel;render();});await window.__TAURI__.event.listen('progress',e=>{$('#operation').hidden=false;$('#operation-label').textContent=e.payload.message;$('#operation-progress').value=e.payload.fraction;if(e.payload.message==='Minecraft запущен')$('#cancel-launch').hidden=true;window.KyroPickers.progress(e.payload.message);});await window.__TAURI__.event.listen('state-changed',async()=>{await sync();render();});await window.__TAURI__.event.listen('close-blocked',()=>toast('Дождитесь завершения игры или установки.'));
   invoke('versions').then(v=>{releaseVersions=v.filter(v=>!/^1\.(?:[0-9]|1[0-2])(?:\.|$)/.test(v));if(page==='play')render();}).catch(e=>toast('Не удалось обновить список версий: '+e));
  }}catch(e){failure(e);render();}
 }
@@ -208,3 +212,13 @@ window.KyroPickers.configure({current:()=>({...s(),busy:state.busy}),releases:()
 window.KyroFeatures.configure({state:()=>state,invoke,persist,render,error:failure,run:runOperation,changed:async()=>{await sync();render();},openMods:()=>{catalogKind='manage';catalogData=null;navigate('catalog');}});
 window.KyroAssist.configure({state:()=>state,invoke,render,error:failure,run:runOperation,navigate,changed:async()=>{await sync();render();},openJava:()=>{settingsTab='java';navigate('settings');},openMods:()=>{catalogKind='manage';catalogData=null;navigate('catalog');},openCompatibility:()=>{catalogKind='compatibility';catalogData=null;navigate('catalog');}});
 boot();
+
+async function openFpsBoost(){
+ let dialog=$('#fps-dialog');if(!dialog){dialog=document.createElement('dialog');dialog.id='fps-dialog';document.body.append(dialog);}
+ dialog.innerHTML='<h2>FPS-буст</h2><p>Подбираем совместимые моды…</p><button id="fps-close">Закрыть</button>';
+ $('#fps-close').onclick=()=>dialog.close();dialog.showModal();
+ try{const plan=await invoke('fps_plan');if(!dialog.open)return;
+ dialog.innerHTML='<h2>FPS-буст</h2><p>'+esc(plan.label)+'</p><div class="fps-rows">'+plan.rows.map(row=>'<p><strong>'+esc(row.name)+'</strong><br><span class="muted">'+esc(row.description)+' · '+esc(row.status)+'</span></p>').join('')+'</div><div class="image-actions"><button id="fps-close">Закрыть</button><button id="fps-install" class="primary" '+(!plan.items.length?'disabled':'')+'>Установить ('+plan.items.length+')</button></div>';
+ $('#fps-close').onclick=()=>dialog.close();$('#fps-install').onclick=async()=>{dialog.close();await runOperation('Установка FPS-буста…',()=>invoke('fps_install',{plan}));window.KyroFeatures.invalidateUpdates();};
+ }catch(e){dialog.close();failure(e);}
+}

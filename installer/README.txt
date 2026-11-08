@@ -12,3 +12,5 @@ KyroLauncher
 Minecraft и Java загружаются отдельно при подготовке игры.
 
 https://github.com/slarenc/kyro-launcher
+
+Интерфейс Tauri требует Microsoft Edge WebView2 Runtime.

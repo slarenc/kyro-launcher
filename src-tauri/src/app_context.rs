@@ -1,67 +1,79 @@
-//! Framework-independent services shared by the native UI and background tasks.
+//! Services shared by Tauri commands and background tasks.
 use crate::store::State;
 use serde::Serialize;
-use serde_json::Value;
-use std::sync::{mpsc, Arc};
-
+use std::sync::Arc;
+use tauri::{Emitter, Manager};
 #[derive(Debug, Clone, Copy)]
 pub enum WindowAction {
     Hide,
     Minimize,
     Restore,
-    Exit,
 }
-pub enum Event {
-    Message(String, Value),
-    Window(WindowAction),
-}
-
 #[derive(Clone)]
 pub struct AppContext {
     state: Arc<State>,
-    events: mpsc::Sender<Event>,
-    repaint: Arc<dyn Fn() + Send + Sync>,
+    handle: Option<tauri::AppHandle>,
     pub presence: Arc<crate::presence::Presence>,
     pub launch: Arc<crate::launch_control::LaunchControl>,
-    pub native_window: Arc<crate::native_window::NativeWindow>,
 }
 impl AppContext {
-    pub fn new(
-        state: Arc<State>,
-        events: mpsc::Sender<Event>,
-        repaint: Arc<dyn Fn() + Send + Sync>,
-    ) -> Self {
+    pub fn new(state: Arc<State>, handle: tauri::AppHandle) -> Self {
         let presence = Arc::new(crate::presence::Presence::new(Arc::downgrade(&state)));
         Self {
             state,
-            events,
-            repaint,
+            handle: Some(handle),
             presence,
-            launch: Arc::new(crate::launch_control::LaunchControl::default()),
-            native_window: Arc::new(crate::native_window::NativeWindow::default()),
+            launch: Arc::default(),
+        }
+    }
+    #[cfg(test)]
+    pub fn headless(state: Arc<State>) -> Self {
+        let presence = Arc::new(crate::presence::Presence::new(Arc::downgrade(&state)));
+        Self {
+            state,
+            handle: None,
+            presence,
+            launch: Arc::default(),
         }
     }
     pub fn state(&self) -> &State {
         &self.state
     }
     pub fn emit(&self, name: &str, value: impl Serialize) -> Result<(), String> {
-        self.events
-            .send(Event::Message(
-                name.into(),
+        let Some(handle) = &self.handle else {
+            return Ok(());
+        };
+        handle
+            .emit(
+                name,
                 serde_json::to_value(value).map_err(|e| e.to_string())?,
-            ))
-            .map_err(|e| e.to_string())?;
-        (self.repaint)();
-        Ok(())
+            )
+            .map_err(|e| e.to_string())
     }
     pub fn window(&self, action: WindowAction) {
-        if matches!(action, WindowAction::Restore) {
-            self.native_window.restore();
+        if let Some(w) = self
+            .handle
+            .as_ref()
+            .and_then(|handle| handle.get_webview_window("main"))
+        {
+            match action {
+                WindowAction::Hide => {
+                    let _ = w.hide();
+                }
+                WindowAction::Minimize => {
+                    let _ = w.minimize();
+                }
+                WindowAction::Restore => {
+                    let _ = w.show();
+                    let _ = w.unminimize();
+                    let _ = w.set_focus();
+                }
+            }
         }
-        let _ = self.events.send(Event::Window(action));
-        (self.repaint)();
     }
-    pub fn exit(&self, _code: i32) {
-        self.window(WindowAction::Exit);
+    pub fn exit(&self, code: i32) {
+        if let Some(handle) = &self.handle {
+            handle.exit(code);
+        }
     }
 }

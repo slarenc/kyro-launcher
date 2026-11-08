@@ -435,6 +435,7 @@ pub async fn launch_to(
         })
         .await?;
     attempt.start_game()?;
+    let _ = app.emit("launch-state", json!({"can_cancel":false,"running":true}));
     let mut child = cmd
         .spawn()
         .map_err(|e| format!("Не удалось запустить Java: {e}"))?;

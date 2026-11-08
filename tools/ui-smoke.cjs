@@ -51,8 +51,11 @@ const fs = require('fs');
     if(name==='check_launcher_update')return {current:'0.6.0',version:window.__mockUpdate?'0.7.0':'0.6.0',available:!!window.__mockUpdate,installable:!!window.__mockUpdate,notes:'Тестовое обновление'};
     if(name==='install_launcher_update'){window.__updateRequested=true;return;}
     if(name==='notices'){if(args.action==='clear')data.notices=[];return;}
+    if(name==='fps_plan')return {label:'1.21.1 · Fabric',rows:[{name:'Sodium',description:'Оптимизация отрисовки',status:'Будет установлен'}],items:[{project:'sodium'}]};
+    if(name==='fps_install'){window.__fpsInstalled=true;return {installed:1};}
+    if(name==='cancel_launch'){window.__launchCancelled=true;return true;}
     throw new Error('Unmocked command: '+name);
-   }},event:{listen:async()=>{}},window:{getCurrentWindow:()=>({})}};
+   }},event:{listen:async(name,callback)=>{(window.__listeners??={})[name]=callback;}},window:{getCurrentWindow:()=>({})}};
  });
  await page.goto('file:///'+path.resolve('ui/index.html').replaceAll('\\','/'));
  fs.mkdirSync('output/app-preview',{recursive:true});
@@ -243,7 +246,25 @@ const fs = require('fs');
  await page.locator('#launch-anyway').click();
  await page.waitForFunction(n=>(window.__gameLaunchCount||0)===n+1,launches);
  await page.evaluate(()=>window.__compatProblems=false);
+ await page.locator('[data-page="play"]').click();
+ await page.locator('#fps-boost').click();
+ await page.locator('#fps-install:not([disabled])').waitFor();
+ await page.screenshot({path:'output/app-preview/22-fps-boost.png'});
+ await page.locator('#fps-install').click();
+ await page.waitForFunction(()=>window.__fpsInstalled===true);
+ await page.waitForFunction(()=>document.querySelector('#operation').hidden);
+ await page.evaluate(()=>{document.querySelector('#operation').hidden=false;window.__listeners['launch-state']({payload:{can_cancel:true,running:false}});});
+ if(await page.locator('#play').innerText()!=='Отменить')throw new Error('Main launch button did not expose cancellation');
+ await page.locator('#play').click();
+ await page.waitForFunction(()=>window.__launchCancelled===true);
+ await page.evaluate(()=>window.__listeners["launch-state"]({payload:{can_cancel:false,running:false}}));
+ await page.locator('[data-page="settings"]').click();
+ await page.locator('[data-settings-tab="general"]').click();
+ await page.locator('#discord-enabled').uncheck();
+ await page.locator('[data-page="play"]').click();
+ await page.locator('[data-page="settings"]').click();
+ if(await page.locator('#discord-enabled').isChecked())throw new Error('Discord setting did not persist');
  await browser.close();
  if(errors.length)throw new Error(errors.join('\n'));
- console.log('PASS: navigation, upright Fabric, catalog, install state, settings, 371-day grid, no JS errors.');
+ console.log('PASS: navigation, upright Fabric, catalog, install state, settings, 371-day grid, FPS boost, launch cancellation, Discord persistence, no JS errors.');
 })().catch(e=>{console.error(e);process.exit(1);});

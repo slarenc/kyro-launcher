@@ -1,6 +1,6 @@
 {
-  "name": "kyro-launcher-ui-tests",
-  "version": "0.6.1",
+  "name": "kyro-launcher-ui",
+  "version": "0.7.2",
   "private": true,
   "scripts": {
     "test:ui": "node tools/ui-smoke.cjs"

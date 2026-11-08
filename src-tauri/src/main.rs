@@ -9,7 +9,7 @@ mod game;
 mod launch_control;
 mod managed_mods;
 mod modpacks;
-mod native_window;
+
 mod net;
 mod playtools;
 mod presence;
@@ -478,8 +478,10 @@ pub(crate) async fn run_launch(
     }
     let record = diagnostics::start(&app);
     let attempt = app.launch.begin();
+    let _ = app.emit("launch-state", json!({"can_cancel":true,"running":false}));
     let result = game::launch_to(app.clone(), server.as_deref(), &attempt).await;
     attempt.finish();
+    let _ = app.emit("launch-state", json!({"can_cancel":false,"running":false}));
     diagnostics::finish(&app, record, &result);
     let state = app.state();
     *state.busy.lock().map_err(|e| e.to_string())? = false;
@@ -600,12 +602,12 @@ fn open_microsoft_login(url: String) -> Result<(), String> {
     Ok(())
 }
 mod app_context;
-mod native_ui;
+mod desktop;
 fn main() {
     if updates::handle_cli() {
         return;
     }
-    if let Err(e) = native_ui::run() {
+    if let Err(e) = desktop::run() {
         eprintln!("KYRO: {e}");
         rfd::MessageDialog::new()
             .set_title("KYRO — ошибка запуска")

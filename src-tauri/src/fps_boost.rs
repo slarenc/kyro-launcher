@@ -428,8 +428,7 @@ mod tests {
             data: std::sync::Mutex::new(data),
             busy: std::sync::Mutex::new(false),
         };
-        let (tx, _rx) = std::sync::mpsc::channel();
-        let app = AppContext::new(std::sync::Arc::new(state), tx, std::sync::Arc::new(|| {}));
+        let app = AppContext::headless(std::sync::Arc::new(state));
         tokio::runtime::Runtime::new().unwrap().block_on(async {
             let approved = plan(app.state()).await.unwrap();
             assert!(approved["items"].as_array().unwrap().len() >= 4);
