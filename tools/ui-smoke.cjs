@@ -51,7 +51,11 @@ const fs = require('fs');
     if(name==='check_launcher_update')return {current:'0.6.0',version:window.__mockUpdate?'0.7.0':'0.6.0',available:!!window.__mockUpdate,installable:!!window.__mockUpdate,notes:'Тестовое обновление'};
     if(name==='install_launcher_update'){window.__updateRequested=true;return;}
     if(name==='notices'){if(args.action==='clear')data.notices=[];return;}
-    if(name==='fps_plan')return {label:'1.21.1 · Fabric',rows:[{name:'Sodium',description:'Оптимизация отрисовки',status:'Будет установлен'}],items:[{project:'sodium'}]};
+    if(name==='fps_plan'){
+     if(window.__fpsHold)await new Promise(resolve=>window.__fpsRelease=resolve);
+     if(window.__fpsFail)throw new Error('Не удалось загрузить список. Проверь подключение.');
+     return {label:'1.21.1 · Fabric',rows:['Sodium','Embeddium','Lithium','FerriteCore','ImmediatelyFast','Entity Culling','ModernFix','More Culling'].map((name,i)=>({name,description:'Оптимизация отрисовки и использования памяти',status:i===1?'Уже выбран другой мод отрисовки':'Будет установлен'})),items:Array.from({length:6},(_,i)=>({project:'optimization-'+i}))};
+    }
     if(name==='fps_install'){window.__fpsInstalled=true;return {installed:1};}
     if(name==='cancel_launch'){window.__launchCancelled=true;return true;}
     throw new Error('Unmocked command: '+name);
@@ -250,12 +254,26 @@ const fs = require('fs');
  await page.waitForFunction(n=>(window.__gameLaunchCount||0)===n+1,launches);
  await page.evaluate(()=>window.__compatProblems=false);
  await page.locator('[data-page="play"]').click();
+ await page.evaluate(()=>window.__fpsHold=true);
  await page.locator('#fps-boost').click();
+ await page.locator('.fps-loading').waitFor();
+ await page.screenshot({path:'output/app-preview/24-fps-loading.png'});
+ await page.evaluate(()=>{window.__fpsHold=false;window.__fpsRelease();});
  await page.locator('#fps-install:not([disabled])').waitFor();
+ const layout=await page.locator('#fps-dialog').evaluate(dialog=>({bottom:dialog.querySelector('.fps-rows').getBoundingClientRect().bottom,footer:dialog.querySelector('.fps-actions').getBoundingClientRect().top,scroll:dialog.querySelector('.fps-rows').scrollHeight>dialog.querySelector('.fps-rows').clientHeight,inside:dialog.getBoundingClientRect().top>=0&&dialog.getBoundingClientRect().bottom<=innerHeight}));
+ if(layout.bottom>layout.footer||!layout.inside||!layout.scroll)throw Error('FPS dialog must fit the viewport with scrollable rows above the footer');
  await page.screenshot({path:'output/app-preview/22-fps-boost.png'});
  await page.locator('#fps-install').click();
  await page.waitForFunction(()=>window.__fpsInstalled===true);
  await page.waitForFunction(()=>document.querySelector('#operation').hidden);
+ await page.evaluate(()=>window.__fpsFail=true);
+ await page.locator('#fps-boost').click();
+ await page.locator('.fps-error').waitFor();
+ await page.screenshot({path:'output/app-preview/25-fps-error.png'});
+ await page.evaluate(()=>window.__fpsFail=false);
+ await page.locator('#fps-retry').click();
+ await page.locator('#fps-install:not([disabled])').waitFor();
+ await page.locator('#fps-close').click();
  await page.evaluate(()=>{document.querySelector('#operation').hidden=false;window.__listeners['launch-state']({payload:{can_cancel:true,running:false}});});
  if(await page.locator('#play').innerText()!=='Отменить')throw new Error('Main launch button did not expose cancellation');
  await page.locator('#play').click();

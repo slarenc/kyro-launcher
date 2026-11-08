@@ -213,12 +213,22 @@ window.KyroFeatures.configure({state:()=>state,invoke,persist,render,error:failu
 window.KyroAssist.configure({state:()=>state,invoke,render,error:failure,run:runOperation,navigate,changed:async()=>{await sync();render();},openJava:()=>{settingsTab='java';navigate('settings');},openMods:()=>{catalogKind='manage';catalogData=null;navigate('catalog');},openCompatibility:()=>{catalogKind='compatibility';catalogData=null;navigate('catalog');}});
 boot();
 
+let fpsRequest=0;
 async function openFpsBoost(){
- let dialog=$('#fps-dialog');if(!dialog){dialog=document.createElement('dialog');dialog.id='fps-dialog';document.body.append(dialog);}
- dialog.innerHTML='<h2>FPS-буст</h2><p>Подбираем совместимые моды…</p><button id="fps-close">Закрыть</button>';
- $('#fps-close').onclick=()=>dialog.close();dialog.showModal();
- try{const plan=await invoke('fps_plan');if(!dialog.open)return;
- dialog.innerHTML='<h2>FPS-буст</h2><p>'+esc(plan.label)+'</p><div class="fps-rows">'+plan.rows.map(row=>'<p><strong>'+esc(row.name)+'</strong><br><span class="muted">'+esc(row.description)+' · '+esc(row.status)+'</span></p>').join('')+'</div><div class="image-actions"><button id="fps-close">Закрыть</button><button id="fps-install" class="primary" '+(!plan.items.length?'disabled':'')+'>Установить ('+plan.items.length+')</button></div>';
- $('#fps-close').onclick=()=>dialog.close();$('#fps-install').onclick=async()=>{dialog.close();await runOperation('Установка FPS-буста…',()=>invoke('fps_install',{plan}));window.KyroFeatures.invalidateUpdates();};
- }catch(e){dialog.close();failure(e);}
+ const request=++fpsRequest;
+ let dialog=$('#fps-dialog');
+ if(!dialog){dialog=document.createElement('dialog');dialog.id='fps-dialog';dialog.setAttribute('aria-labelledby','fps-title');document.body.append(dialog);dialog.addEventListener('close',()=>{fpsRequest++;});}
+ const header=label=>`<header class="fps-heading"><div><div class="eyebrow">ОПТИМИЗАЦИЯ</div><h2 id="fps-title">FPS-буст</h2><span class="fps-profile">${esc(label)}</span></div><button class="fps-dismiss" aria-label="Закрыть FPS-буст">×</button></header><p class="fps-intro">Моды для плавной игры. Твои настройки графики сохранятся.</p>`;
+ const close=()=>{$('.fps-dismiss',dialog).onclick=()=>dialog.close();const button=$('#fps-close');if(button)button.onclick=()=>dialog.close();};
+ dialog.innerHTML=header(s().version+' · '+s().loader)+`<div class="fps-loading" role="status"><span class="fps-spinner" aria-hidden="true"></span><div><strong>Подбираем моды</strong><span>Проверяем совместимость и зависимости…</span></div></div><div class="fps-skeleton" aria-hidden="true"><i></i><i></i><i></i></div><footer class="fps-actions"><span>Только совместимые версии</span><button id="fps-close">Отмена</button></footer>`;
+ close();if(!dialog.open)dialog.showModal();
+ try{
+  const plan=await invoke('fps_plan');if(!dialog.open||request!==fpsRequest)return;
+  dialog.innerHTML=header(plan.label)+`<div class="fps-list-heading"><span>ПОДОБРАННЫЕ МОДЫ</span><span>К установке: ${plan.items.length}</span></div><div class="fps-rows" tabindex="0" aria-label="Моды оптимизации">${plan.rows.map(row=>{const install=row.status==='Будет установлен',present=row.status.startsWith('Уже установлен');return `<article class="fps-mod"><span class="fps-mod-mark ${install?'pending':present?'installed':''}" aria-hidden="true">${install?'+':present?'✓':'−'}</span><div><strong>${esc(row.name)}</strong><p>${esc(row.description)}</p><span class="fps-mod-status ${install?'pending':''}">${esc(row.status)}</span></div></article>`;}).join('')}</div><footer class="fps-actions"><span>${plan.items.length?'С зависимостями':'Всё готово'}</span><div><button id="fps-close">Закрыть</button><button id="fps-install" class="primary" ${!plan.items.length?'disabled':''}>Установить · ${plan.items.length}</button></div></footer>`;
+  close();$('#fps-install').onclick=async()=>{dialog.close();await runOperation('Установка FPS-буста…',()=>invoke('fps_install',{plan}));window.KyroFeatures.invalidateUpdates();};
+ }catch(e){
+  if(!dialog.open||request!==fpsRequest)return;
+  dialog.innerHTML=header(s().version+' · '+s().loader)+`<div class="fps-error" role="alert"><strong>Не удалось подобрать моды</strong><p>${esc(String(e))}</p></div><footer class="fps-actions"><button id="fps-close">Закрыть</button><button id="fps-retry" class="primary">Повторить</button></footer>`;
+  close();$('#fps-retry').onclick=openFpsBoost;
+ }
 }
