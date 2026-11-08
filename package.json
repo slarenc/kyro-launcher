@@ -3,7 +3,14 @@
   "version": "0.7.2",
   "private": true,
   "scripts": {
-    "test:ui": "node tools/ui-smoke.cjs"
+    "check": "node tools/build.cjs check",
+    "test": "node tools/build.cjs test",
+    "build": "node tools/build.cjs release",
+    "build:debug": "node tools/build.cjs debug",
+    "build:installer": "node tools/installer.cjs",
+    "test:ui": "node tools/ui-smoke.cjs",
+    "test:app": "node tools/tauri-smoke-runner.cjs",
+    "test:installer": "node tools/installer-smoke.cjs"
   },
   "devDependencies": {
     "playwright": "1.62.1"

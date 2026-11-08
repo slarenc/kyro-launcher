@@ -47,33 +47,33 @@ Microsoft-вход требует собственного OAuth Client ID с pu
 
 ## Сборка
 
-Требуются Rust stable MSVC, Visual Studio Build Tools с C++ и Windows SDK. Интерфейс из `ui` встраивается в EXE; Node.js для сборки приложения не требуется.
+Требуются Node.js, Rust stable MSVC, Visual Studio Build Tools с C++ и Windows SDK. Интерфейс из `ui` встраивается в EXE. Сборочные инструменты используют стандартные модули Node.js; npm-зависимости нужны только для UI-тестов.
 
-```powershell
+```bat
 git clone https://github.com/slarenc/kyro-launcher.git
 cd kyro-launcher
-./build.ps1 -Mode check
-./build.ps1 -Mode test
-./build.ps1 -Mode release -OutputName 'KyroLauncher.exe'
+node tools/build.cjs check
+node tools/build.cjs test
+node tools/build.cjs release
 ```
 
 Готовый EXE и лицензии появятся в `dist`.
 
 Установщик с ярлыками на рабочем столе и в меню «Пуск» собирается через Inno Setup 7 или совместимый Inno Setup 6:
 
-```powershell
-./build-installer.ps1
+```bat
+node tools/installer.cjs
 ```
 
-Для упаковки готового `dist/KyroLauncher.exe` используйте `./build-installer.ps1 -SkipBuild`. Установка выполняется для текущего пользователя без прав администратора; удаление программы сохраняет игровые данные.
+Для упаковки готового `dist/KyroLauncher.exe` используйте `node tools/installer.cjs --skip-build`. Установка выполняется для текущего пользователя без прав администратора; удаление программы сохраняет игровые данные.
 
 ## Тестирование
 
-`./build.ps1 -Mode test` запускает Rust-тесты. Флаг `-NetworkTests` включает проверки внешних API.
+`node tools/build.cjs test` запускает Rust-тесты. Флаг `--network-tests` включает проверки внешних API.
 
 Для проверки интерфейса установите Node.js и зависимости Playwright:
 
-```powershell
+```bat
 npm install
 npm run test:ui
 ```
@@ -82,12 +82,14 @@ UI-тест проверяет навигацию, каталог, аккаун�
 
 Проверка настоящего приложения, WebView2 и IPC:
 
-```powershell
-./build.ps1 -Mode debug
-./tools/tauri-smoke.ps1
+```bat
+node tools/build.cjs debug
+node tools/tauri-smoke-runner.cjs
 ```
 
 Тест использует отдельный каталог в `target/tauri-ui-smoke` и не меняет пользовательские профили.
+
+Проверка установщика: `npm run test:installer`. Она устанавливает приложение и ярлыки в отдельный каталог внутри `target`, проверяет повторную установку, удаление и сохранность данных.
 
 ## Устройство проекта
 

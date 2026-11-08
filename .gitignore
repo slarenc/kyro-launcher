@@ -14,8 +14,11 @@
 !.env.example
 /tools/*
 !/tools/ui-smoke.cjs
-!/tools/native-smoke.ps1
-!/tools/installer-smoke.ps1
 
 !/tools/tauri-smoke.cjs
-!/tools/tauri-smoke.ps1
+!/tools/build.cjs
+!/tools/msvc-env.cmd
+!/tools/installer.cjs
+!/tools/tauri-smoke-runner.cjs
+!/tools/installer-smoke.cjs
+!/tools/shortcut-info.vbs

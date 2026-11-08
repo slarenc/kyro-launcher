@@ -1,9 +1,9 @@
-; Build with ../build-installer.ps1. The desktop shortcut is mandatory.
+; Build with node tools/installer.cjs. The desktop shortcut is mandatory.
 #ifndef AppVersion
-  #error AppVersion must be provided by build-installer.ps1
+  #error AppVersion must be provided by tools/installer.cjs
 #endif
 #ifndef SourceExe
-  #error SourceExe must be provided by build-installer.ps1
+  #error SourceExe must be provided by tools/installer.cjs
 #endif
 
 [Setup]
