@@ -1,5 +1,17 @@
 # KYRO Launcher
 
+## Лицензия и исходный код
+
+Copyright (c) 2026 slarenc. Код KYRO Launcher распространяется по [MIT](LICENSE).
+Можно изучать, собирать, копировать, изменять и распространять код, в том числе
+в коммерческих проектах, при сохранении текста лицензии и уведомления об авторстве.
+Описание условий приложения: [APPLICATION_LICENSE.md](APPLICATION_LICENSE.md).
+Сторонние компоненты сохраняют собственные лицензии:
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+KYRO — независимый проект, не связанный с Mojang или Microsoft и не одобренный ими.
+Minecraft и другие товарные знаки принадлежат их правообладателям.
+
 Неофициальный лаунчер Minecraft Java Edition для Windows x64 на **Rust + egui / eframe**. Чёрный интерфейс, встроенный Inter, палитра цветов и отдельные игровые профили.
 
 **[Скачать KyroLauncher 0.7.2 для Windows x64](https://github.com/slarenc/kyro-launcher/releases/tag/v0.7.2)**

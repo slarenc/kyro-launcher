@@ -31,6 +31,10 @@ if ($Mode -in @('debug', 'release')) {
     $profileDir = if ($Mode -eq 'debug') { 'debug' } else { 'release' }
     $destination = Join-Path $PSScriptRoot 'dist'
     New-Item -ItemType Directory -Path $destination -Force | Out-Null
+    foreach ($noticeFile in @('LICENSE', 'APPLICATION_LICENSE.md', 'THIRD_PARTY_NOTICES.md')) {
+        Copy-Item -LiteralPath (Join-Path $PSScriptRoot $noticeFile) -Destination $destination -Force
+    }
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'src-tauri/assets/Inter-LICENSE.txt') -Destination $destination -Force
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot "target/$profileDir/kyro-launcher.exe") -Destination (Join-Path $destination $OutputName) -Force
     Write-Output "Built: $destination/$OutputName"
 }

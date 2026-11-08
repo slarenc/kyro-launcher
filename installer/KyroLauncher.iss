@@ -47,6 +47,8 @@ Name: "russian"; MessagesFile: "compiler:Languages\Russian.isl"
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Files]
+Source: "..\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\APPLICATION_LICENSE.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceExe}"; DestDir: "{app}"; DestName: "KyroLauncher.exe"; Flags: ignoreversion
 Source: "..\src-tauri\assets\Inter-LICENSE.txt"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\THIRD_PARTY_NOTICES.md"; DestDir: "{app}"; Flags: ignoreversion
