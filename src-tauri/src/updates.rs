@@ -160,7 +160,7 @@ fn apply_files(plan: &Value, relaunch: bool) -> Result<(), String> {
         return Err(e.to_string());
     }
     if !relaunch {
-        return Ok(());
+        return fs::remove_file(&backup).map_err(|e| format!("Не удалось удалить прежний EXE: {e}"));
     }
     let mut cmd = Command::new(target);
     if let Some(parent) = target.parent() {
@@ -177,7 +177,7 @@ fn apply_files(plan: &Value, relaunch: bool) -> Result<(), String> {
             "Не удалось перезапустить KYRO; прежний EXE восстановлен: {e}"
         ));
     }
-    Ok(())
+    fs::remove_file(&backup).map_err(|e| format!("Обновление установлено, но не удалось удалить прежний EXE: {e}"))
 }
 pub fn handle_cli() -> bool {
     let args: Vec<_> = std::env::args_os().collect();
@@ -220,7 +220,7 @@ mod tests {
         assert_eq!(info["installable"], false);
     }
     #[test]
-    fn replaces_only_executable_and_preserves_backup_and_data() {
+    fn replaces_executable_without_leaving_backup_and_preserves_data() {
         let root = std::env::temp_dir().join(format!(
             "kyro-update-test-{}",
             chrono::Utc::now().timestamp_micros()
@@ -239,12 +239,26 @@ mod tests {
         apply_files(&plan, false).unwrap();
         assert_eq!(fs::read(&target).unwrap(), b"new executable");
         assert_eq!(fs::read(&data).unwrap(), b"private settings");
-        let backup = fs::read_dir(&root)
+        assert!(!fs::read_dir(&root)
             .unwrap()
             .flatten()
-            .find(|e| e.file_name().to_string_lossy().contains("previous-"))
-            .unwrap();
-        assert_eq!(fs::read(backup.path()).unwrap(), b"old executable");
+            .any(|e| e.file_name().to_string_lossy().contains("previous-")));
+        let _ = fs::remove_dir_all(root);
+    }
+    #[test]
+    fn restores_previous_executable_when_relaunch_fails() {
+        let root = std::env::temp_dir().join(format!(
+            "kyro-update-rollback-test-{}",
+            chrono::Utc::now().timestamp_micros()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        let target = root.join("KYRO.exe");
+        let source = root.join("download.exe");
+        fs::write(&target, b"old executable").unwrap();
+        fs::write(&source, b"invalid executable").unwrap();
+        let plan = json!({"target":target,"source":source,"hash":format!("{:x}", Sha256::digest(b"invalid executable"))});
+        assert!(apply_files(&plan, true).is_err());
+        assert_eq!(fs::read(&target).unwrap(), b"old executable");
         let _ = fs::remove_dir_all(root);
     }
 }
