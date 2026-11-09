@@ -607,6 +607,7 @@ fn main() {
     if updates::handle_cli() {
         return;
     }
+    updates::cleanup_after_startup();
     if let Err(e) = desktop::run() {
         eprintln!("KYRO: {e}");
         rfd::MessageDialog::new()

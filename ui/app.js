@@ -1,5 +1,5 @@
 'use strict';
-const CURRENT_LAUNCHER_VERSION = '0.7.9';
+const CURRENT_LAUNCHER_VERSION = '0.7.10';
 const $ = (q, root = document) => root.querySelector(q);
 const $$ = (q, root = document) => [...root.querySelectorAll(q)];
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -152,7 +152,7 @@ function settings(){
  if(settingsTab==='game')content=window.KyroAssist.presets();
  if(settingsTab==='general')content+=window.KyroFeatures.settings();
  if(settingsTab==='java')content+=window.KyroFeatures.javaSettings();
- return heading('Настройки')+`<div class="tabs">${[['general','Основные'],['java','Java и память'],['downloads','Загрузки'],['game','Профили графики']].map(([key,label])=>`<button data-settings-tab="${key}" class="${settingsTab===key?'selected':''}">${label}</button>`).join('')}</div>${content}<div class="settings-end"><span id="save-status">Изменения сохраняются автоматически</span><span>KYRO / 0.6.1</span></div>`;
+ return heading('Настройки')+`<div class="tabs">${[['general','Основные'],['java','Java и память'],['downloads','Загрузки'],['game','Профили графики']].map(([key,label])=>`<button data-settings-tab="${key}" class="${settingsTab===key?'selected':''}">${label}</button>`).join('')}</div>${content}<div class="settings-end"><span id="save-status">Изменения сохраняются автоматически</span><span>KYRO / ${CURRENT_LAUNCHER_VERSION}</span></div>`;
 }
 function bind(){
  for(const [id,key] of [['discord-enabled','discord_enabled'],['discord-server','discord_show_server']]){const input=$('#'+id);if(input)input.onchange=()=>{s()[key]=input.checked;persist();};}

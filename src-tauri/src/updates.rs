@@ -123,6 +123,11 @@ pub async fn install_launcher_update(app: crate::app_context::AppContext) -> Res
 fn apply(plan: &Value) -> Result<(), String> {
     apply_files(plan, true)
 }
+pub fn cleanup_after_startup() {
+    if let Ok(target) = std::env::current_exe() {
+        cleanup_legacy_backups(&target);
+    }
+}
 fn cleanup_legacy_backups(target: &Path) {
     let (Some(parent), Some(stem)) = (target.parent(), target.file_stem().and_then(|s| s.to_str())) else { return; };
     let prefix = format!("{stem}.previous-");
@@ -133,7 +138,20 @@ fn cleanup_legacy_backups(target: &Path) {
             let Some(timestamp) = name.strip_prefix(&prefix).and_then(|s| s.strip_suffix(".exe")) else { continue; };
             if !timestamp.is_empty() && timestamp.bytes().all(|b| b.is_ascii_digit())
                 && entry.file_type().is_ok_and(|kind| kind.is_file()) {
-                let _ = fs::remove_file(entry.path());
+                let directory = parent.join(".kyro-update");
+                let rollback = directory.join("previous.bin");
+                if !rollback.exists() {
+                    if fs::create_dir_all(&directory).is_err() { continue; }
+                    #[cfg(windows)]
+                    {
+                        let mut hide = Command::new("attrib.exe");
+                        hide.arg("+H").arg(&directory).creation_flags(0x08000000);
+                        if !hide.status().is_ok_and(|status| status.success()) { continue; }
+                    }
+                    let _ = fs::rename(entry.path(), rollback);
+                } else {
+                    let _ = fs::remove_file(entry.path());
+                }
             }
         }
     }
@@ -250,6 +268,11 @@ mod tests {
         }
         cleanup_legacy_backups(&root.join("KYRO.exe"));
         assert!(!root.join("KYRO.previous-123.exe").exists());
+        assert_eq!(fs::read(root.join(".kyro-update/previous.bin")).unwrap(), b"test");
+        fs::write(root.join("KYRO.previous-456.exe"), b"older").unwrap();
+        cleanup_legacy_backups(&root.join("KYRO.exe"));
+        assert!(!root.join("KYRO.previous-456.exe").exists());
+        assert_eq!(fs::read(root.join(".kyro-update/previous.bin")).unwrap(), b"test");
         assert!(root.join("Other.previous-123.exe").exists());
         assert!(root.join("KYRO.previous-notes.exe").exists());
         let _ = fs::remove_dir_all(root);
