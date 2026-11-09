@@ -123,6 +123,18 @@ pub async fn install_launcher_update(app: crate::app_context::AppContext) -> Res
 fn apply(plan: &Value) -> Result<(), String> {
     apply_files(plan, true)
 }
+fn remove_backup(path: &Path) -> Result<(), String> {
+    // Windows/antivirus may briefly retain a handle after the old process exits.
+    for attempt in 0..40 {
+        match fs::remove_file(path) {
+            Ok(()) => return Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(e) if attempt == 39 => return Err(format!("Не удалось удалить прежний EXE: {e}")),
+            Err(_) => std::thread::sleep(std::time::Duration::from_millis(250)),
+        }
+    }
+    unreachable!()
+}
 fn apply_files(plan: &Value, relaunch: bool) -> Result<(), String> {
     let target = Path::new(plan["target"].as_str().ok_or("Нет target")?);
     let source = Path::new(plan["source"].as_str().ok_or("Нет source")?);
@@ -160,7 +172,7 @@ fn apply_files(plan: &Value, relaunch: bool) -> Result<(), String> {
         return Err(e.to_string());
     }
     if !relaunch {
-        return fs::remove_file(&backup).map_err(|e| format!("Не удалось удалить прежний EXE: {e}"));
+        return remove_backup(&backup);
     }
     let mut cmd = Command::new(target);
     if let Some(parent) = target.parent() {
@@ -177,7 +189,7 @@ fn apply_files(plan: &Value, relaunch: bool) -> Result<(), String> {
             "Не удалось перезапустить KYRO; прежний EXE восстановлен: {e}"
         ));
     }
-    fs::remove_file(&backup).map_err(|e| format!("Обновление установлено, но не удалось удалить прежний EXE: {e}"))
+    remove_backup(&backup)
 }
 pub fn handle_cli() -> bool {
     let args: Vec<_> = std::env::args_os().collect();

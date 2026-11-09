@@ -1,4 +1,5 @@
 'use strict';
+const CURRENT_LAUNCHER_VERSION = '0.7.8';
 const $ = (q, root = document) => root.querySelector(q);
 const $$ = (q, root = document) => [...root.querySelectorAll(q)];
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -118,9 +119,17 @@ async function loadCatalog(){
  catch(e){if(seq===catalogSeq){catalogData=null;catalogError=String(e?.message||e);}}
  finally{if(seq===catalogSeq){catalogLoading=false;if(page==='catalog')render();}}
 }
+function launcherNoticeInstalled(id){
+ const match=/^launcher-update-v?(\d+)\.(\d+)\.(\d+)$/.exec(id);
+ if(!match)return false;
+ const installed=CURRENT_LAUNCHER_VERSION.split('.').map(Number);
+ const release=match.slice(1).map(Number);
+ for(let i=0;i<3;i++){if(release[i]!==installed[i])return release[i]<installed[i];}
+ return true;
+}
 function notifications(){
  const list=state.data.notices.filter(n=>noticeFilter!=='unread'||n.unread);const groups=new Map();list.forEach(n=>{const key=new Date(n.time).toLocaleDateString('ru-RU',{day:'numeric',month:'long'});if(!groups.has(key))groups.set(key,[]);groups.get(key).push(n);});
- return heading('Уведомления','Загрузки, обновления и сообщения лаунчера',`<button id="clear-notices" ${state.data.notices.length?'':'disabled'}>Очистить</button>`)+`<div class="tabs"><button data-notice-filter="all" class="${noticeFilter==='all'?'selected':''}">Все</button><button data-notice-filter="unread" class="${noticeFilter==='unread'?'selected':''}">Непрочитанные · ${state.data.notices.filter(n=>n.unread).length}</button><button id="read-notices">Прочитать все</button></div>${list.length?[...groups].map(([day,items])=>`<div class="notice-group"><h3>${esc(day.toUpperCase())}</h3>${items.map(n=>`<div class="notice">${n.unread?'<span class="dot"></span>':''}${icon('bell')}<div class="notice-content"><strong>${esc(n.title)}</strong><p>${esc(n.body)}</p>${n.id.startsWith('launcher-update-')?`<button class="primary notice-update" data-launcher-update ${state.busy?'disabled':''}>Обновить KYRO</button>`:''}</div><time>${esc(new Date(n.time).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'}))}</time><button data-dismiss="${esc(n.id)}" aria-label="Удалить уведомление">×</button></div>`).join('')}</div>`).join(''):empty('Всё спокойно','Здесь появятся результаты установки модов, проверки файлов и ошибки запуска.','bell')}`;
+ return heading('Уведомления','Загрузки, обновления и сообщения лаунчера',`<button id="clear-notices" ${state.data.notices.length?'':'disabled'}>Очистить</button>`)+`<div class="tabs"><button data-notice-filter="all" class="${noticeFilter==='all'?'selected':''}">Все</button><button data-notice-filter="unread" class="${noticeFilter==='unread'?'selected':''}">Непрочитанные · ${state.data.notices.filter(n=>n.unread).length}</button><button id="read-notices">Прочитать все</button></div>${list.length?[...groups].map(([day,items])=>`<div class="notice-group"><h3>${esc(day.toUpperCase())}</h3>${items.map(n=>`<div class="notice">${n.unread?'<span class="dot"></span>':''}${icon('bell')}<div class="notice-content"><strong>${esc(launcherNoticeInstalled(n.id)?`KYRO ${n.id.replace(/^launcher-update-/,'')} · установлено`:n.title)}</strong><p>${esc(launcherNoticeInstalled(n.id)?'Эта версия уже установлена. Повторное обновление не требуется.':n.body)}</p>${n.id.startsWith('launcher-update-')?(launcherNoticeInstalled(n.id)?'<span class="notice-installed" role="status">✓ Уже установлено</span>':`<button class="primary notice-update" data-launcher-update ${state.busy?'disabled':''}>Обновить KYRO</button>`):''}</div><time>${esc(new Date(n.time).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'}))}</time><button data-dismiss="${esc(n.id)}" aria-label="Удалить уведомление">×</button></div>`).join('')}</div>`).join(''):empty('Всё спокойно','Здесь появятся результаты установки модов, проверки файлов и ошибки запуска.','bell')}`;
 }
 function segments(key,options){return `<div class="segments">${options.map(([v,label])=>`<button data-setting="${key}" data-value="${v}" class="${s()[key]===v?'selected':''}">${label}</button>`).join('')}</div>`;}
 function colorPalette(){return `<div class="palette" role="group" aria-label="Палитра цветов">${[['#a185cf','Лаванда'],['#8b5cf6','Фиолетовый'],['#6b9fff','Синий'],['#52c7c3','Бирюзовый'],['#80c99a','Зелёный'],['#e6b865','Золотистый'],['#e894bc','Розовый'],['#e77e85','Коралловый'],['#d9dce7','Серебристый']].map(([hex,name])=>`<button data-setting="accent" data-value="${hex}" style="--swatch:${hex}" aria-label="${name}" title="${name}" aria-pressed="${s().accent.toLowerCase()===hex}" class="swatch ${s().accent.toLowerCase()===hex?'selected':''}"><span></span>${s().accent.toLowerCase()===hex?icon('check'):''}</button>`).join('')}</div>`;}
