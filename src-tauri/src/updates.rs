@@ -51,6 +51,23 @@ pub async fn check_launcher_update() -> Result<Value, String> {
     release_info(&net::json(API).await?)
 }
 
+pub fn notify_release(data: &mut crate::store::Data, info: &Value) -> bool {
+    let Some(tag) = info["version"].as_str() else { return false; };
+    if info["available"] != true || data.notified_launcher_version == tag {
+        return false;
+    }
+    data.notified_launcher_version = tag.into();
+    data.notices.insert(0, crate::store::Notice {
+        id: format!("launcher-update-{tag}"),
+        title: format!("Доступна новая версия KYRO {tag}"),
+        body: "На GitHub вышло обновление лаунчера. Открой «Настройки» → «Обновления KYRO», чтобы обновиться.".into(),
+        time: chrono::Utc::now().to_rfc3339(),
+        unread: true,
+    });
+    data.notices.truncate(200);
+    true
+}
+
 pub async fn install_launcher_update(app: crate::app_context::AppContext) -> Result<(), String> {
     let state = app.state();
     {
@@ -182,6 +199,20 @@ pub fn handle_cli() -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn notifies_once_per_release_even_after_clearing_and_reloading() {
+        let mut data = crate::store::Data::default();
+        assert!(!notify_release(&mut data, &json!({"available":false,"version":"0.0.1"})));
+        let info = json!({"available":true,"version":"v99.0.0"});
+        assert!(notify_release(&mut data, &info));
+        assert!(data.notices[0].unread);
+        assert!(!notify_release(&mut data, &info));
+        data.notices.clear();
+        let mut restored = serde_json::from_value(serde_json::to_value(data).unwrap()).unwrap();
+        assert!(!notify_release(&mut restored, &info));
+        assert!(notify_release(&mut restored, &json!({"available":true,"version":"v99.0.1"})));
+        assert_eq!(restored.notices.len(), 1);
+    }
     #[test]
     fn checks_release_version_and_origin() {
         assert!(version("v0.10.0") > version("0.6.0"));

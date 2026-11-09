@@ -92,6 +92,7 @@ pub struct Data {
     pub settings: Settings,
     pub sessions: Vec<Session>,
     pub notices: Vec<Notice>,
+    pub notified_launcher_version: String,
     pub installed: Vec<Installed>,
     pub offline_accounts: Vec<OfflineAccount>,
     pub selected_account: Option<String>,

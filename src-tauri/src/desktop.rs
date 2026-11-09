@@ -204,8 +204,17 @@ async fn install_java(context: tauri::State<'_, AppContext>) -> Result<Value, St
 }
 
 #[tauri::command]
-async fn check_launcher_update(_context: tauri::State<'_, AppContext>) -> Result<Value, String> {
+async fn check_launcher_update(context: tauri::State<'_, AppContext>) -> Result<Value, String> {
     let result = crate::updates::check_launcher_update().await?;
+    let state = context.state();
+    let added = {
+        let mut data = state.data.lock().map_err(|e| e.to_string())?;
+        crate::updates::notify_release(&mut data, &result)
+    };
+    if added {
+        state.save()?;
+        context.emit("state-changed", ())?;
+    }
     serde_json::to_value(result).map_err(|e| e.to_string())
 }
 

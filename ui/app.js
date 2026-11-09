@@ -202,7 +202,7 @@ $('#minimize').onclick=()=>native&&window.__TAURI__.window.getCurrentWindow().mi
 $('#maximize').onclick=()=>native&&window.__TAURI__.window.getCurrentWindow().toggleMaximize();
 $('#close').onclick=()=>{if(state.busy){toast('Дождитесь завершения игры или установки, чтобы сохранить историю сессии.');return;}if(native)window.__TAURI__.window.getCurrentWindow().close();};
 async function boot(){
- if(native)setTimeout(()=>window.KyroFeatures.checkUpdate(true),3000);
+ if(native){setTimeout(()=>window.KyroFeatures.checkUpdate(true),3000);setInterval(()=>window.KyroFeatures.checkUpdate(true),15*60*1000);}
  try{if(!native){const saved=JSON.parse(localStorage.getItem('kyro-preview-settings')||'null');if(saved)saved&&Object.assign(state.data.settings,saved);}await sync();render();
  if(native){await window.__TAURI__.event.listen('launch-state',e=>{state.launch=e.payload;$('#cancel-launch').hidden=!e.payload.can_cancel;render();});await window.__TAURI__.event.listen('progress',e=>{$('#operation').hidden=false;$('#operation-label').textContent=e.payload.message;$('#operation-progress').value=e.payload.fraction;if(e.payload.message==='Minecraft запущен')$('#cancel-launch').hidden=true;window.KyroPickers.progress(e.payload.message);});await window.__TAURI__.event.listen('state-changed',async()=>{await sync();render();});await window.__TAURI__.event.listen('close-blocked',()=>toast('Дождитесь завершения игры или установки.'));
   invoke('versions').then(v=>{releaseVersions=v.filter(v=>!/^1\.(?:[0-9]|1[0-2])(?:\.|$)/.test(v));if(page==='play')render();}).catch(e=>toast('Не удалось обновить список версий: '+e));
