@@ -256,6 +256,10 @@ fn worker(state: Weak<State>, receiver: mpsc::Receiver<Command>, status: Arc<Mut
         let c = client.as_mut().unwrap();
         let payload = activity::Activity::new()
             .name("KyroLauncher")
+            .buttons(vec![activity::Button::new(
+                "Скачать KYRO",
+                "https://kyrolauncher.netlify.app/#download",
+            )])
             .details(current.0.clone())
             .state(current.1.clone())
             .timestamps(activity::Timestamps::new().start(started))
