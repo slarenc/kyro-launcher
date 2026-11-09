@@ -1,6 +1,6 @@
 {
   "name": "kyro-launcher-ui",
-  "version": "0.7.6",
+  "version": "0.7.7",
   "private": true,
   "scripts": {
     "check": "node tools/build.cjs check",

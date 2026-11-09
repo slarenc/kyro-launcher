@@ -119,3 +119,10 @@ select.native-select-source{display:none!important}
 .fps-skeleton{display:flex;flex-direction:column;gap:10px;margin:20px 0 4px}.fps-skeleton i{height:6px;width:65%;border-radius:4px;background:var(--line);animation:pulse 1.8s infinite}.fps-skeleton i:nth-child(2){width:90%;animation-delay:.2s}.fps-skeleton i:nth-child(3){width:45%;animation-delay:.4s}
 .fps-error{padding:16px;border:1px solid var(--line);border-radius:10px}.fps-error strong{font-size:13px}#fps-dialog .fps-error p{font-size:12px;line-height:1.6;color:var(--muted);margin:8px 0 0;overflow-wrap:anywhere}
 @keyframes fps-spin{to{transform:rotate(360deg)}}@media(prefers-reduced-motion:reduce){.fps-spinner,.fps-skeleton i{animation:none}}
+/* A single persistent wallpaper under the whole launcher, shared by every page. */
+#app{position:relative;isolation:isolate}
+#launcher-background{position:absolute;inset:0;z-index:-1;pointer-events:none;background-size:cover;background-position:center;background-repeat:no-repeat}
+#launcher-background::after{content:'';position:absolute;inset:0;background:color-mix(in srgb,var(--bg) 72%,transparent)}
+#app.has-background>.sidebar{background:color-mix(in srgb,var(--bg) 65%,transparent)}
+#app.has-background .home-orbit,#app.has-background main>.orbit{opacity:.22}
+.notice-content>.notice-update{display:inline-flex;margin-top:12px;padding:10px 16px;font-size:12px}.notice-content{min-width:0}

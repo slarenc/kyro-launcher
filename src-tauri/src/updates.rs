@@ -60,7 +60,7 @@ pub fn notify_release(data: &mut crate::store::Data, info: &Value) -> bool {
     data.notices.insert(0, crate::store::Notice {
         id: format!("launcher-update-{tag}"),
         title: format!("Доступна новая версия KYRO {tag}"),
-        body: "На GitHub вышло обновление лаунчера. Открой «Настройки» → «Обновления KYRO», чтобы обновиться.".into(),
+        body: "Вышла новая версия лаунчера. Нажми «Обновить KYRO» в этом уведомлении — лаунчер установит обновление и перезапустится.".into(),
         time: chrono::Utc::now().to_rfc3339(),
         unread: true,
     });
