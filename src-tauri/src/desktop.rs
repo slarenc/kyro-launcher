@@ -364,6 +364,15 @@ async fn cancel_launch(context: tauri::State<'_, AppContext>) -> Result<Value, S
     serde_json::to_value(result).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+fn hud_status(context: tauri::State<'_, AppContext>) -> Result<Value,String> {
+    crate::hud::status(context.inner().state())
+}
+#[tauri::command]
+async fn install_hud(context: tauri::State<'_, AppContext>) -> Result<(),String> {
+    let app=context.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || crate::hud::install(app.state())).await.map_err(|e|e.to_string())?
+}
 pub fn run() -> tauri::Result<()> {
     let app = tauri::Builder::default()
         .setup(|app| {
@@ -408,6 +417,8 @@ pub fn run() -> tauri::Result<()> {
             remove_server,
             server_status,
             launch_server,
+            hud_status,
+            install_hud,
             fps_plan,
             fps_install,
             cancel_launch

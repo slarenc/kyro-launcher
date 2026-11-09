@@ -1,0 +1,10 @@
+const fs=require('node:fs');
+const path=require('node:path');
+const {execFileSync}=require('node:child_process');
+const {root,msvcEnvironment}=require('./build.cjs');
+const env=msvcEnvironment();
+const gradle=process.env.KYRO_GRADLE || 'gradle';
+execFileSync(gradle,['-p','mods/kyro-hud','build','--console=plain'],{cwd:root,env,stdio:'inherit',windowsHide:true,shell:process.platform==='win32'});
+const cargo=path.join(process.env.USERPROFILE,'.cargo/bin/cargo.exe');
+execFileSync(cargo,['build','--release','--locked','--manifest-path','mods/kyro-media/Cargo.toml'],{cwd:root,env,stdio:'inherit',windowsHide:true});
+for(const [source,target] of [['mods/kyro-hud/build/libs/kyro-hud-1.0.0.jar','src-tauri/resources/kyro-hud-1.0.0.jar'],['mods/kyro-media/target/release/kyro-media.exe','src-tauri/resources/kyro-media.exe']])fs.copyFileSync(path.join(root,source),path.join(root,target));

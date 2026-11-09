@@ -1,0 +1,19 @@
+plugins { id 'net.fabricmc.fabric-loom-remap' version '1.14.10' }
+version = '1.0.0'
+group = 'ru.kyro'
+base { archivesName = 'kyro-hud' }
+repositories { mavenCentral() }
+dependencies {
+ minecraft 'com.mojang:minecraft:1.21.11'
+ mappings 'net.fabricmc:yarn:1.21.11+build.6:v2'
+ modImplementation 'net.fabricmc:fabric-loader:0.18.4'
+ modImplementation 'net.fabricmc.fabric-api:fabric-api:0.141.6+1.21.11'
+}
+java { toolchain { languageVersion = JavaLanguageVersion.of(21) } }
+tasks.withType(JavaCompile).configureEach { options.encoding = 'UTF-8' }
+
+tasks.register('layoutTest', JavaExec) { dependsOn testClasses; classpath = sourceSets.test.runtimeClasspath; mainClass = 'ru.kyro.hud.PanelLayoutTest' }
+tasks.named('check') { dependsOn layoutTest }
+
+// Assertions run through the explicit layoutTest harness above.
+tasks.named('test') { failOnNoDiscoveredTests = false }

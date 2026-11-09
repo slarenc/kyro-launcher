@@ -67,4 +67,4 @@ if (require.main === module) {
     build(mode, options);
   } catch (error) { console.error(error.message); process.exitCode = 1; }
 }
-module.exports = {root, run, build};
+module.exports = {root, run, build, msvcEnvironment};

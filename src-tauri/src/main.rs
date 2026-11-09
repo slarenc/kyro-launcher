@@ -5,6 +5,7 @@ mod cores;
 mod customization;
 mod diagnostics;
 mod fps_boost;
+mod hud;
 mod game;
 mod launch_control;
 mod managed_mods;
