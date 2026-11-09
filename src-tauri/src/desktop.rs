@@ -197,6 +197,11 @@ async fn update_mod(
 }
 
 #[tauri::command]
+fn remove_mod(context: tauri::State<'_, AppContext>, filename: String) -> Result<(), String> {
+    crate::managed_mods::remove_mod(context.state(), filename)
+}
+
+#[tauri::command]
 async fn install_java(context: tauri::State<'_, AppContext>) -> Result<Value, String> {
     let app = context.inner().clone();
     let result = crate::runtime::install_java(app).await?;
@@ -387,6 +392,7 @@ pub fn run() -> tauri::Result<()> {
             select_modpack,
             scan_mods,
             toggle_mod,
+            remove_mod,
             update_mod,
             install_java,
             check_launcher_update,

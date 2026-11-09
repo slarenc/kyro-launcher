@@ -4,6 +4,7 @@ const $ = (q, root = document) => root.querySelector(q);
 const $$ = (q, root = document) => [...root.querySelectorAll(q)];
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const paths = {
+ trash:'M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7',
  servers:'M4 3h16v6H4Zm0 12h16v6H4Zm3-9h.01M7 18h.01M12 9v6',screenshots:'M3 4h18v16H3Zm0 12 5-5 5 5 3-3 5 5M16 8h.01',diagnostics:'M3 12h4l3-7 4 14 3-7h4',
  play:'M7 4 21 12 7 20Z', catalog:'m12 3 10 5-10 5L2 8Zm-10 9 10 5 10-5M2 16l10 5 10-5',
  friends:'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M16 3a4 4 0 0 1 0 8m6 10v-2a4 4 0 0 0-3-3.87M13 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0',
@@ -99,7 +100,7 @@ function catalog(){
  const categories=[['modpack','Сборки'],['mod','Моды'],['shader','Шейдеры'],['resourcepack','Ресурспаки'],['manage','Мои моды'],['installed','Установленные']];
  const data=catalogData, installed=catalogKind==='installed';
  let content='';
- if(installed){const packs=(state.data.modpacks||[]).map(p=>`<div class="mod-row"><div class="mod-icon">${icon('box')}</div><div class="mod-info"><strong>${esc(p.name)}</strong><p>${esc(p.version_name)} · Minecraft ${esc(p.game_version)} · ${esc(p.loader)} ${esc(p.loader_version)}</p><small>Отдельный профиль сборки</small></div><button data-launch-pack="${esc(p.id)}" ${state.busy?'disabled':''}>Запустить</button></div>`).join('');const items=state.data.installed.filter(x=>x.game_version===s().version&&x.loader===s().loader&&(x.instance_id||'')===(s().instance_id||''));content=packs+(items.length?items.map(x=>`<div class="mod-row"><div class="mod-icon">${icon('box')}</div><div class="mod-info"><strong>${esc(x.name)}</strong><p>${esc(x.filename)}</p><small>${esc(x.game_version)} · ${esc(x.loader)}</small></div><span class="badge">Установлено</span></div>`).join(''):packs?'':empty('Профиль пока пуст','Установи моды из каталога. Каждый профиль хранит свои файлы отдельно.'));}
+ if(installed){const packs=(state.data.modpacks||[]).map(p=>`<div class="mod-row"><div class="mod-icon">${icon('box')}</div><div class="mod-info"><strong>${esc(p.name)}</strong><p>${esc(p.version_name)} · Minecraft ${esc(p.game_version)} · ${esc(p.loader)} ${esc(p.loader_version)}</p><small>Отдельный профиль сборки</small></div><button data-launch-pack="${esc(p.id)}" ${state.busy?'disabled':''}>Запустить</button></div>`).join('');const items=state.data.installed.filter(x=>x.game_version===s().version&&x.loader===s().loader&&(x.instance_id||'')===(s().instance_id||''));content=packs+(items.length?items.map(x=>`<div class="mod-row"><div class="mod-icon">${icon('box')}</div><div class="mod-info"><strong>${esc(x.name)}</strong><p>${esc(x.filename)}</p><small>${esc(x.game_version)} · ${esc(x.loader)}</small></div><span class="badge">Установлено</span>${x.kind==='mod'?`<button class="remove-mod" data-remove-mod="${esc(x.filename)}" aria-label="Удалить ${esc(x.name)}" title="Удалить мод" ${state.busy?'disabled':''}>${icon('trash')}</button>`:''}</div>`).join(''):packs?'':empty('Профиль пока пуст','Установи моды из каталога. Каждый профиль хранит свои файлы отдельно.'));}
  else if(catalogLoading)content=empty('Ищем на Modrinth…','Загрузка совместимых проектов.','search');
  else if(catalogError)content=empty('Не удалось загрузить каталог',esc(catalogError))+'<button id="retry-catalog">Повторить</button>';
  else if(data?.hits?.length)content=data.hits.map((m,index)=>{
@@ -172,6 +173,7 @@ function bind(){
  if($('#previous-page'))$('#previous-page').onclick=()=>{catalogOffset=Math.max(0,catalogOffset-12);loadCatalog();};
  if($('#next-page'))$('#next-page').onclick=()=>{catalogOffset+=12;loadCatalog();};
  $$('[data-install]').forEach(b=>b.onclick=async()=>{const item=catalogData.hits[Number(b.dataset.install)],kind=catalogKind;const ok=await runOperation(`Установка ${item.title}…`,()=>invoke('install_mod',{project:item.project_id,name:item.title,kind}));if(ok)window.KyroFeatures.invalidateUpdates();if(ok&&kind==='modpack'){catalogData=null;navigate('play');toast('Сборка установлена и выбрана. Нажми «Играть» для запуска.');}});
+ $$('[data-remove-mod]').forEach(button=>button.onclick=async()=>{const ok=await runOperation('Удаление мода…',()=>invoke('remove_mod',{filename:button.dataset.removeMod}));if(ok){window.KyroFeatures.invalidateUpdates();toast('Мод удалён из профиля.');}});
  $$('[data-notice-filter]').forEach(b=>b.onclick=()=>{noticeFilter=b.dataset.noticeFilter;render();});
  for(const [id,action]of [['clear-notices','clear'],['read-notices','read']]){if($('#'+id))$('#'+id).onclick=async()=>{try{await invoke('notices',{action,id:null});await sync();render();}catch(e){failure(e);}};}
  $$('[data-dismiss]').forEach(b=>b.onclick=async()=>{try{await invoke('notices',{action:'dismiss',id:b.dataset.dismiss});await sync();render();}catch(e){failure(e);}});

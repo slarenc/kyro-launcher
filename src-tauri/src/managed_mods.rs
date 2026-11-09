@@ -165,6 +165,66 @@ pub fn toggle_mod(state: &State, filename: String, enabled: bool) -> Result<(), 
     }
     fs::rename(dir.join(filename), dir.join(target)).map_err(|e| e.to_string())
 }
+pub fn remove_mod(state: &State, filename: String) -> Result<(), String> {
+    let busy = state.busy.lock().map_err(|e| e.to_string())?;
+    if *busy {
+        return Err("Закройте Minecraft и дождитесь окончания загрузок".into());
+    }
+    safe_segment_relaxed(&filename)?;
+    let base = filename.strip_suffix(".disabled").unwrap_or(&filename);
+    if !base.ends_with(".jar") {
+        return Err("Ожидался JAR-мод".into());
+    }
+    let settings = state.data.lock().map_err(|e| e.to_string())?.settings.clone();
+    let profile = state.instance_dir(&settings)?;
+    let dir = profile.join("mods");
+    if dir.exists() && !fs::canonicalize(&dir).map_err(|e| e.to_string())?
+        .starts_with(fs::canonicalize(&profile).map_err(|e| e.to_string())?) {
+        return Err("Папка модов находится вне профиля".into());
+    }
+    let mut moved = Vec::new();
+    for name in [base.to_string(), format!("{base}.disabled")] {
+        let source = dir.join(&name);
+        let meta = match fs::symlink_metadata(&source) {
+            Ok(meta) => meta,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(e) => return Err(e.to_string()),
+        };
+        if !meta.file_type().is_file() {
+            return Err("Удаление ссылок и папок не поддерживается".into());
+        }
+        moved.push((source, name));
+    }
+    // Keep removed mods recoverable without touching dependencies or other profiles.
+    let trash = profile.join("mod-trash").join(chrono::Utc::now().timestamp_micros().to_string());
+    if !moved.is_empty() {
+        fs::create_dir_all(&trash).map_err(|e| e.to_string())?;
+    }
+    let mut archived: Vec<(PathBuf, PathBuf)> = Vec::new();
+    for (source, name) in moved {
+        let destination = trash.join(name);
+        if let Err(e) = fs::rename(&source, &destination) {
+            for (from, to) in &archived { let _ = fs::rename(to, from); }
+            return Err(e.to_string());
+        }
+        archived.push((source, destination));
+    }
+    let previous = {
+        let mut data = state.data.lock().map_err(|e| e.to_string())?;
+        let previous = data.installed.clone();
+        data.installed.retain(|item| !(item.kind == "mod"
+            && item.game_version == settings.version && item.loader == settings.loader
+            && item.instance_id == settings.instance_id
+            && item.filename.trim_end_matches(".disabled") == base));
+        previous
+    };
+    if let Err(e) = state.save() {
+        state.data.lock().map_err(|e| e.to_string())?.installed = previous;
+        for (from, to) in &archived { let _ = fs::rename(to, from); }
+        return Err(e);
+    }
+    Ok(())
+}
 async fn update_impl(app: &crate::app_context::AppContext, filename: &str) -> Result<(), String> {
     safe_segment_relaxed(filename)?;
     let state = app.state();
@@ -371,6 +431,36 @@ pub async fn update_mod(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn removes_disabled_mod_from_only_the_active_profile() {
+        let root = std::env::temp_dir().join(format!("kyro-remove-mod-{}", chrono::Utc::now().timestamp_micros()));
+        let mut data = crate::store::Data::default();
+        data.settings.instance_id = "active-pack".into();
+        let item = Installed { instance_id: "active-pack".into(), project_id: "sodium".into(),
+            version_id: "v1".into(), name: "Sodium".into(), filename: "sodium.jar".into(),
+            kind: "mod".into(), game_version: data.settings.version.clone(), loader: data.settings.loader.clone() };
+        let mut other = item.clone();
+        other.instance_id = "other-pack".into();
+        data.installed = vec![item, other];
+        let state = State { root: root.clone(), data: std::sync::Mutex::new(data), busy: std::sync::Mutex::new(false) };
+        let settings = state.data.lock().unwrap().settings.clone();
+        let profile = state.instance_dir(&settings).unwrap();
+        fs::create_dir_all(profile.join("mods")).unwrap();
+        fs::write(profile.join("mods/sodium.jar.disabled"), b"mod").unwrap();
+        fs::write(profile.join("mods/dependency.jar"), b"dependency").unwrap();
+        *state.busy.lock().unwrap() = true;
+        assert!(remove_mod(&state, "sodium.jar".into()).is_err());
+        *state.busy.lock().unwrap() = false;
+        assert!(remove_mod(&state, "../outside.jar".into()).is_err());
+        remove_mod(&state, "sodium.jar".into()).unwrap();
+        assert!(!profile.join("mods/sodium.jar.disabled").exists());
+        assert!(profile.join("mods/dependency.jar").exists());
+        assert_eq!(state.data.lock().unwrap().installed.len(), 1);
+        assert_eq!(state.data.lock().unwrap().installed[0].instance_id, "other-pack");
+        let entry = fs::read_dir(profile.join("mod-trash")).unwrap().next().unwrap().unwrap();
+        assert_eq!(fs::read(entry.path().join("sodium.jar.disabled")).unwrap(), b"mod");
+        let _ = fs::remove_dir_all(root);
+    }
     #[test]
     fn names_are_single_files() {
         for name in ["../mod.jar", "x:y.jar", "x/y.jar", "x\\y.jar"] {
