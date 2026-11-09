@@ -123,17 +123,20 @@ pub async fn install_launcher_update(app: crate::app_context::AppContext) -> Res
 fn apply(plan: &Value) -> Result<(), String> {
     apply_files(plan, true)
 }
-fn remove_backup(path: &Path) -> Result<(), String> {
-    // Windows/antivirus may briefly retain a handle after the old process exits.
-    for attempt in 0..40 {
-        match fs::remove_file(path) {
-            Ok(()) => return Ok(()),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-            Err(e) if attempt == 39 => return Err(format!("Не удалось удалить прежний EXE: {e}")),
-            Err(_) => std::thread::sleep(std::time::Duration::from_millis(250)),
+fn cleanup_legacy_backups(target: &Path) {
+    let (Some(parent), Some(stem)) = (target.parent(), target.file_stem().and_then(|s| s.to_str())) else { return; };
+    let prefix = format!("{stem}.previous-");
+    if let Ok(entries) = fs::read_dir(parent) {
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            let Some(name) = name.to_str() else { continue; };
+            let Some(timestamp) = name.strip_prefix(&prefix).and_then(|s| s.strip_suffix(".exe")) else { continue; };
+            if !timestamp.is_empty() && timestamp.bytes().all(|b| b.is_ascii_digit())
+                && entry.file_type().is_ok_and(|kind| kind.is_file()) {
+                let _ = fs::remove_file(entry.path());
+            }
         }
     }
-    unreachable!()
 }
 fn apply_files(plan: &Value, relaunch: bool) -> Result<(), String> {
     let target = Path::new(plan["target"].as_str().ok_or("Нет target")?);
@@ -152,10 +155,16 @@ fn apply_files(plan: &Value, relaunch: bool) -> Result<(), String> {
     }
     let new = target.with_extension("update-new");
     fs::write(&new, bytes).map_err(|e| e.to_string())?;
-    let backup = target.with_extension(format!(
-        "previous-{}.exe",
-        chrono::Utc::now().timestamp_micros()
-    ));
+    let backup_dir = target.parent().ok_or("Нет папки лаунчера")?.join(".kyro-update");
+    fs::create_dir_all(&backup_dir).map_err(|e| e.to_string())?;
+    #[cfg(windows)]
+    {
+        let mut hide = Command::new("attrib.exe");
+        hide.arg("+H").arg(&backup_dir).creation_flags(0x08000000);
+        let _ = hide.status();
+    }
+    // One fixed rollback file: never accumulate timestamped copies.
+    let backup = backup_dir.join("previous.bin");
     let mut moved = false;
     for _ in 0..120 {
         if fs::rename(target, &backup).is_ok() {
@@ -172,7 +181,7 @@ fn apply_files(plan: &Value, relaunch: bool) -> Result<(), String> {
         return Err(e.to_string());
     }
     if !relaunch {
-        return remove_backup(&backup);
+        return Ok(());
     }
     let mut cmd = Command::new(target);
     if let Some(parent) = target.parent() {
@@ -189,7 +198,8 @@ fn apply_files(plan: &Value, relaunch: bool) -> Result<(), String> {
             "Не удалось перезапустить KYRO; прежний EXE восстановлен: {e}"
         ));
     }
-    remove_backup(&backup)
+    cleanup_legacy_backups(target);
+    Ok(())
 }
 pub fn handle_cli() -> bool {
     let args: Vec<_> = std::env::args_os().collect();
@@ -232,7 +242,20 @@ mod tests {
         assert_eq!(info["installable"], false);
     }
     #[test]
-    fn replaces_executable_without_leaving_backup_and_preserves_data() {
+    fn cleans_only_legacy_backups_for_this_launcher() {
+        let root = std::env::temp_dir().join(format!("kyro-legacy-test-{}", chrono::Utc::now().timestamp_micros()));
+        fs::create_dir_all(&root).unwrap();
+        for name in ["KYRO.previous-123.exe", "Other.previous-123.exe", "KYRO.previous-notes.exe"] {
+            fs::write(root.join(name), b"test").unwrap();
+        }
+        cleanup_legacy_backups(&root.join("KYRO.exe"));
+        assert!(!root.join("KYRO.previous-123.exe").exists());
+        assert!(root.join("Other.previous-123.exe").exists());
+        assert!(root.join("KYRO.previous-notes.exe").exists());
+        let _ = fs::remove_dir_all(root);
+    }
+    #[test]
+    fn replaces_executable_keeps_one_backup_and_preserves_data() {
         let root = std::env::temp_dir().join(format!(
             "kyro-update-test-{}",
             chrono::Utc::now().timestamp_micros()
@@ -251,6 +274,14 @@ mod tests {
         apply_files(&plan, false).unwrap();
         assert_eq!(fs::read(&target).unwrap(), b"new executable");
         assert_eq!(fs::read(&data).unwrap(), b"private settings");
+        let backup = root.join(".kyro-update/previous.bin");
+        assert_eq!(fs::read(&backup).unwrap(), b"old executable");
+        fs::write(&source, b"next executable").unwrap();
+        plan["hash"] = json!(format!("{:x}", Sha256::digest(b"next executable")));
+        apply_files(&plan, false).unwrap();
+        assert_eq!(fs::read(&target).unwrap(), b"next executable");
+        assert_eq!(fs::read(&backup).unwrap(), b"new executable");
+        assert_eq!(fs::read_dir(root.join(".kyro-update")).unwrap().count(), 1);
         assert!(!fs::read_dir(&root)
             .unwrap()
             .flatten()
