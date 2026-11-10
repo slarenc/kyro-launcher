@@ -5,6 +5,21 @@ use serde_json::{json, Value};
 use windows::{core::Interface, Media::Control::{GlobalSystemMediaTransportControlsSession as Session, GlobalSystemMediaTransportControlsSessionManager as Manager, GlobalSystemMediaTransportControlsSessionPlaybackStatus as Status}, Storage::Streams::DataReader};
 use windows::Win32::{Media::Audio::*, System::{Com::*, Threading::*}};
 
+const WINDOWS_EPOCH_TICKS: i64 = 116_444_736_000_000_000;
+fn utc_ticks() -> i64 {
+    let elapsed=std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default();
+    WINDOWS_EPOCH_TICKS.saturating_add((elapsed.as_nanos()/100).min(i64::MAX as u128) as i64)
+}
+fn valid_rate(rate:f64)->f64 {if rate.is_finite()&&rate>0.0&&rate<=16.0{rate}else{1.0}}
+// Windows Position is a snapshot at LastUpdatedTime, not a continuously ticking clock.
+fn timeline_position(position:i64,start:i64,end:i64,updated:i64,now:i64,playing:bool,rate:f64)->i64 {
+    let elapsed=if playing&&updated>0&&updated<=now{now.saturating_sub(updated)}else{0};
+    let delta=(elapsed as f64*valid_rate(rate)).round() as i64;
+    let current=position.saturating_sub(start).max(0).saturating_add(delta);
+    let duration=end.saturating_sub(start).max(0);
+    (if duration>0{current.min(duration)}else{current})/10000
+}
+
 #[derive(Default)]
 struct Artwork { key: String, encoded: String, revision: u64, retry: u32 }
 
@@ -85,13 +100,44 @@ fn poll(manager: &Manager, request: &Value, art: &mut Artwork) -> windows::core:
         if let Ok(encoded) = artwork(&session) { if encoded != art.encoded { art.encoded = encoded; art.revision += 1; } }
     }
     let volume = audio_volume(&source, if action == "volume" { request["value"].as_f64().map(|n| n as f32) } else { None });
+    // Re-read after controls/metadata so a seek or track change doesn't mix old bounds
+    // with a new position. Account for unchanged snapshots on every poll.
+    let playback=session.GetPlaybackInfo()?;
+    let playing=playback.PlaybackStatus()?==Status::Playing;
+    let rate=valid_rate(playback.PlaybackRate().and_then(|value|value.Value()).unwrap_or(1.0));
+    let timeline=session.GetTimelineProperties()?;
+    let start=timeline.StartTime()?.Duration;let end=timeline.EndTime()?.Duration;
+    let position=timeline_position(timeline.Position()?.Duration,start,end,timeline.LastUpdatedTime()?.UniversalTime,utc_ticks(),playing,rate);
     let mut result = json!({"protocol":2,"available":true,"title":title,"artist":artist,"source":source,
-        "playing":session.GetPlaybackInfo()?.PlaybackStatus()?==Status::Playing,
-        "position":(session.GetTimelineProperties()?.Position()?.Duration-start).max(0)/10000,"duration":(end-start).max(0)/10000,
+        "playing":playing,"playbackRate":rate,
+        "position":position,"duration":end.saturating_sub(start).max(0)/10000,
         "canToggle":controls.IsPlayPauseToggleEnabled()?,"canNext":controls.IsNextEnabled()?,"canPrevious":controls.IsPreviousEnabled()?,
         "canSeek":controls.IsPlaybackPositionEnabled()?,"volume":volume.unwrap_or(-1.0),"artRevision":art.revision,"accepted":accepted});
     if request["artRevision"].as_u64() != Some(art.revision) { result["artwork"] = json!(art.encoded); }
     Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    const SECOND:i64=10_000_000;
+    #[test]
+    fn stale_windows_snapshot_keeps_moving_across_polls(){
+        let stamp=WINDOWS_EPOCH_TICKS+100*SECOND;
+        assert_eq!(timeline_position(10*SECOND,0,240*SECOND,stamp,stamp+2*SECOND,true,1.0),12_000);
+        assert_eq!(timeline_position(10*SECOND,0,240*SECOND,stamp,stamp+5*SECOND,true,1.0),15_000);
+    }
+    #[test]
+    fn pause_speed_seek_bounds_and_unknown_timestamps(){
+        let stamp=WINDOWS_EPOCH_TICKS+100*SECOND;
+        assert_eq!(timeline_position(10*SECOND,0,240*SECOND,stamp,stamp+2*SECOND,false,1.0),10_000);
+        assert_eq!(timeline_position(10*SECOND,0,240*SECOND,stamp,stamp+2*SECOND,true,2.0),14_000);
+        assert_eq!(timeline_position(112*SECOND,100*SECOND,340*SECOND,stamp,stamp+3*SECOND,true,1.0),15_000);
+        assert_eq!(timeline_position(239*SECOND,0,240*SECOND,stamp,stamp+3*SECOND,true,1.0),240_000);
+        assert_eq!(timeline_position(10*SECOND,0,240*SECOND,0,stamp,true,1.0),10_000);
+        assert_eq!(timeline_position(10*SECOND,0,240*SECOND,stamp+SECOND,stamp,true,1.0),10_000);
+        assert_eq!(timeline_position(10*SECOND,0,240*SECOND,stamp,stamp+2*SECOND,true,f64::NAN),12_000);
+    }
 }
 
 fn main() {

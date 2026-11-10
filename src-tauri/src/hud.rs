@@ -87,7 +87,7 @@ pub fn prepare(state:&State,settings:&Settings)->Result<Vec<String>,String>{
 }
 
 fn mapping_names(text:&str)->Value{
-    let mut result=json!({"mappingRevision":3});let mut section="";
+    let mut result=json!({"mappingRevision":4});let mut section="";
     for line in text.lines(){
         if !line.starts_with(' '){
             section="";
@@ -113,6 +113,9 @@ fn mapping_names(text:&str)->Value{
                 if ["net.minecraft.client.gui.components.ChatComponent","net.minecraft.client.gui.components.PlayerTabOverlay","net.minecraft.client.renderer.entity.EntityRenderer","net.minecraft.client.renderer.feature.NameTagFeatureRenderer"].contains(&name){if result.get("badgeScopes").is_none(){result["badgeScopes"]=json!([]);}result["badgeScopes"].as_array_mut().unwrap().push(json!(obfuscated));}
             }
         }else if let Some((field,obfuscated))=line.trim().split_once(" -> "){
+            if section=="gameMode"&&field.contains(" useItemOn("){result["useItemOnMethod"]=json!(obfuscated);}
+            if section=="interaction"&&field.ends_with(" FAIL"){result["interactionFailField"]=json!(obfuscated);}
+            if section=="components"&&field.ends_with(" ITEM_MODEL"){result["itemModelField"]=json!(obfuscated);}
             if section=="skyProbe"&&field.contains(" getValue("){result["skyValueMethod"]=json!(obfuscated);}
             for (name,key) in [("SKY_COLOR","skyAttributeField"),("FOG_COLOR","skyFogAttributeField"),("CLOUD_COLOR","skyCloudAttributeField"),("SUNRISE_SUNSET_COLOR","skySunsetAttributeField")]{if section=="skyAttributes"&&field.ends_with(&format!(" {name}")){result[key]=json!(obfuscated);}}
             for (owner,pattern,key) in [("player"," getCooldowns()","playerCooldownMethod"),("living"," getMainHandItem()","mainHandMethod"),("living"," getOffhandItem()","offHandMethod"),("living"," getItemInHand(","itemInHandMethod"),("stack"," getItem()","stackItemMethod"),("stack"," getHoverName()","stackNameMethod"),("stack"," getCount()","stackCountMethod"),("components"," LORE","loreField"),("components"," CUSTOM_MODEL_DATA","customModelField"),("componentGetter"," get(","componentGetMethod"),("lore"," lines()","loreLinesMethod"),("interaction"," consumesAction()","consumesActionMethod"),("gameMode"," useItem(","useItemMethod")]{if section==owner&&field.contains(pattern){result[key]=json!(obfuscated);}}
@@ -131,7 +134,7 @@ pub async fn prepare_mappings(state:&State,settings:&Settings,version:&Value){
     // Render/input hooks never require mappings. These optional aliases improve vanilla ping lookup.
     let Some(url)=version["downloads"]["client_mappings"]["url"].as_str()else{return;};
     let Some(sha)=version["downloads"]["client_mappings"]["sha1"].as_str()else{return;};
-    let Ok(profile)=state.instance_dir(settings)else{return;};let names=profile.join("config/kyro-hud-mapping.json");if fs::read(&names).ok().and_then(|bytes|serde_json::from_slice::<Value>(&bytes).ok()).is_some_and(|value|value["mappingRevision"]==3&&value["textClass"].is_string()&&value["styleFontMethod"].is_string()&&value["badgeScopes"].is_array()&&value["connectionPlayersMethod"].is_string()&&value["playerCooldownMethod"].is_string()){return;}
+    let Ok(profile)=state.instance_dir(settings)else{return;};let names=profile.join("config/kyro-hud-mapping.json");if fs::read(&names).ok().and_then(|bytes|serde_json::from_slice::<Value>(&bytes).ok()).is_some_and(|value|value["mappingRevision"]==4&&value["textClass"].is_string()&&value["styleFontMethod"].is_string()&&value["badgeScopes"].is_array()&&value["connectionPlayersMethod"].is_string()&&value["playerCooldownMethod"].is_string()){return;}
     let task=async{
         let cache=state.root.join("runtime/kyro-hud/mappings");owned_folder(&cache,&state.root)?;let file=cache.join(format!("{sha}.txt"));net::download(url,&file,Some(sha)).await?;
         let text=fs::read_to_string(&file).map_err(|e|e.to_string())?;let bytes=serde_json::to_vec(&mapping_names(&text)).map_err(|e|e.to_string())?;replace_owned(&names,&bytes)
@@ -190,7 +193,7 @@ mod tests{
         prepare(&state,&settings).unwrap();prepare(&state,&settings).unwrap();assert!(!profile.join("mods/kyro-hud.jar").exists());assert_eq!(fs::read(profile.join("mods/other.jar")).unwrap(),b"unrelated");assert_eq!(fs::read(profile.join("config/kyro-panels.json")).unwrap(),b"{\"music\":false}");fs::remove_dir_all(state.root).unwrap();
     }
     #[test]
-    fn official_names_are_optional_and_parse_into_small_alias_table(){let names=mapping_names("net.minecraft.client.Minecraft -> abc:\n    net.minecraft.client.player.LocalPlayer player -> p\nnet.minecraft.client.multiplayer.PlayerInfo -> xyz:\n    int latency -> l\nnet.minecraft.world.attribute.EnvironmentAttributeProbe -> probe:\n    java.lang.Object getValue(net.minecraft.world.attribute.EnvironmentAttribute,float) -> v\nnet.minecraft.world.attribute.EnvironmentAttributes -> attrs:\n    net.minecraft.world.attribute.EnvironmentAttribute SKY_COLOR -> s\n    net.minecraft.world.attribute.EnvironmentAttribute FOG_COLOR -> f\n    net.minecraft.world.attribute.EnvironmentAttribute WATER_FOG_COLOR -> w\n");assert_eq!(names["clientClass"],"abc");assert_eq!(names["playerField"],"p");assert_eq!(names["latencyField"],"l");assert_eq!(names["skyProbeClass"],"probe");assert_eq!(names["skyValueMethod"],"v");assert_eq!(names["skyAttributeField"],"s");assert_eq!(names["skyFogAttributeField"],"f");assert_eq!(names["mappingRevision"],3);}
+    fn official_names_are_optional_and_parse_into_small_alias_table(){let names=mapping_names("net.minecraft.client.Minecraft -> abc:\n    net.minecraft.client.player.LocalPlayer player -> p\nnet.minecraft.client.multiplayer.PlayerInfo -> xyz:\n    int latency -> l\nnet.minecraft.world.attribute.EnvironmentAttributeProbe -> probe:\n    java.lang.Object getValue(net.minecraft.world.attribute.EnvironmentAttribute,float) -> v\nnet.minecraft.world.attribute.EnvironmentAttributes -> attrs:\n    net.minecraft.world.attribute.EnvironmentAttribute SKY_COLOR -> s\n    net.minecraft.world.attribute.EnvironmentAttribute FOG_COLOR -> f\n    net.minecraft.world.attribute.EnvironmentAttribute WATER_FOG_COLOR -> w\n");assert_eq!(names["clientClass"],"abc");assert_eq!(names["playerField"],"p");assert_eq!(names["latencyField"],"l");assert_eq!(names["skyProbeClass"],"probe");assert_eq!(names["skyValueMethod"],"v");assert_eq!(names["skyAttributeField"],"s");assert_eq!(names["skyFogAttributeField"],"f");assert_eq!(names["mappingRevision"],4);}
     #[test]
     fn bootstrap_runtime_contains_java8_classes_without_game_dependencies(){
         let mut jar=zip::ZipArchive::new(std::io::Cursor::new(RUNTIME)).unwrap();let mut bytes=Vec::new();jar.by_name("ru/kyro/builtin/AgentHooks.class").unwrap().read_to_end(&mut bytes).unwrap();assert_eq!(u16::from_be_bytes([bytes[6],bytes[7]]),52);assert!(jar.by_name("fabric.mod.json").is_err());assert!(jar.by_name("ru/kyro/internal/gson/Gson.class").is_ok());

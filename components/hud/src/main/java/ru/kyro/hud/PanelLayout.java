@@ -9,6 +9,13 @@ public final class PanelLayout {
     public static final int INFO_W=226,INFO_H=24,MUSIC_W=272,MUSIC_H=48;
     public double infoX=.02, infoY=.025, musicX=.02, musicY=.83;
     public boolean info=true,music=true,cooldowns=true;
+    public boolean cooldownNames=true,cooldownMinutes=true;
+    public java.util.List<CooldownRule> cooldownRules=new java.util.ArrayList<>();
+    public static final class CooldownRule {
+        public String key="",label="";public double seconds;
+        public CooldownRule(){}
+        public CooldownRule(String key,String label,double seconds){this.key=key;this.label=label;this.seconds=seconds;}
+    }
     public boolean customSky=false,skyUseThemeColor=true,skyFog=true,skyFogFollow=true,skyClouds=true,skyNoSunset=true;
     public int skyColor=0xa185cf,skyFogColor=0xa185cf,skyCloudColor=0xc6b5e5;
     public double skyMix=.65,skyFogMix=.5,skyCloudMix=.35;
@@ -48,6 +55,7 @@ public final class PanelLayout {
         result.musicX=sane(result.musicX);result.musicY=sane(result.musicY);
         result.musicScale=result.musicScale();
         result.cooldownScale=result.cooldownScale();
+        java.util.List<CooldownRule> rules=new java.util.ArrayList<>();if(result.cooldownRules!=null)for(CooldownRule rule:result.cooldownRules)if(rule!=null&&rule.key!=null&&!rule.key.isEmpty()&&rule.key.length()<=4096&&rule.label!=null&&!rule.label.trim().isEmpty()&&rule.label.length()<=256&&Double.isFinite(rule.seconds)&&rule.seconds>0&&rule.seconds<=86400&&rules.size()<24)rules.add(rule);result.cooldownRules=rules;
         result.infoScale=result.infoScale();
         return result;
     }

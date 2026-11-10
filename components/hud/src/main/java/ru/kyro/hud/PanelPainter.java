@@ -91,12 +91,14 @@ final class PanelPainter {
         g.dispose();return image;
     }
     static void separator(Graphics2D g,float x){g.setColor(ink(35));g.fill(new Rectangle2D.Float(x,7, .7f,10));}
-    static BufferedImage cooldowns(java.util.List<AgentCooldowns.Entry> entries){
+    static String cooldownTime(int ticks,boolean minutes){int seconds=Math.max(1,(ticks+19)/20);return minutes&&seconds>=60?(seconds/60)+" мин "+(seconds%60)+" с":seconds+" с";}
+    static BufferedImage cooldowns(java.util.List<AgentCooldowns.Entry> entries){return cooldowns(entries,true,true);}
+    static BufferedImage cooldowns(java.util.List<AgentCooldowns.Entry> entries,boolean names,boolean minutes){
         if(entries.isEmpty())return null;int count=Math.min(AgentCooldowns.MAX_ROWS,entries.size()),height=count*AgentCooldowns.ROW;BufferedImage image=canvas(AgentCooldowns.WIDTH,height);Graphics2D g=graphics(image);
         for(int i=0;i<count;i++){
             AgentCooldowns.Entry entry=entries.get(i);double y=i*AgentCooldowns.ROW;Graphics2D row=(Graphics2D)g.create();row.translate(0,y);glass(row,AgentCooldowns.WIDTH,18,7,false);
-            text(row,entry.label,7,3,90,8.5f,WHITE,0,true);double seconds=Math.ceil(entry.remaining/2.0)/10.0;String time=seconds>=60?time(Math.ceil(seconds)):String.format(java.util.Locale.ROOT,"%.1f с",seconds);
-            if(entry.estimated)time="≈"+time;text(row,time,101,3,35,8,ACCENT,0,true);row.setColor(ink(22));row.fill(new RoundRectangle2D.Double(7,15,126,1.2,2,2));row.setColor(ACCENT);row.fill(new RoundRectangle2D.Double(7,15,126*clamp((double)entry.remaining/entry.total),1.2,2,2));row.dispose();
+            String time=(entry.estimated?"≈":"")+cooldownTime(entry.remaining,minutes);double width=Math.min(76,Math.max(29,row.getFontMetrics(MEDIUM.deriveFont(8f)).stringWidth(time))),tx=AgentCooldowns.WIDTH-7-width;
+            if(names)text(row,entry.label,7,3,tx-13,8.5f,WHITE,0,true);text(row,time,names?tx:7,3,names?width:126,8,ACCENT,0,true);row.setColor(ink(22));row.fill(new RoundRectangle2D.Double(7,15,126,1.2,2,2));row.setColor(ACCENT);row.fill(new RoundRectangle2D.Double(7,15,126*clamp((double)entry.remaining/entry.total),1.2,2,2));row.dispose();
         }g.dispose();return image;
     }
     static final class Skin {

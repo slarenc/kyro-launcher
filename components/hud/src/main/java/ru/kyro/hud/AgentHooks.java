@@ -29,7 +29,8 @@ public final class AgentHooks {
     public static volatile boolean editor;
     static boolean skyEditor;
     static int skyColorEdit=-1;static String skyHex="";static boolean skySelectAll,skyHexError;
-    static int editorHeight(){return skyEditor?274:278;}
+    static int editorHeight(){return CooldownMenu.open?300:skyEditor?274:278;}
+    static int editorY(){return Math.min(46,Math.max(8,guiHeight-editorHeight()-8));}
     static final AtomicBoolean painting=new AtomicBoolean();static volatile Frame pending;static Frame shown;
     static final ExecutorService painter=Executors.newSingleThreadExecutor(r->{Thread t=new Thread(r,"KYRO built-in HUD");t.setDaemon(true);return t;});
     static final Set<String> errors=Collections.synchronizedSet(new HashSet<String>());
@@ -88,8 +89,8 @@ public final class AgentHooks {
             if(seek>=0&&holding==0&&previewUntil!=0&&now>previewUntil){seek=-1;previewUntil=0;}
             if(now-lastPaint>=33_333_333L&&painting.compareAndSet(false,true)){
                 lastPaint=now;final double a=expand,seconds=media.trackSeconds(),previewSeek=seek,ms=musicScale;final boolean h=hot,e=editor,remain=remaining,info=layout.info,music=layout.music,hover=layout.expandOnHover,announce=layout.announceTracks;final String time=clock,latency=ping,frames=fps+" FPS";
-                final boolean cds=layout.cooldowns;final java.util.List<AgentCooldowns.Entry> rows=cooldownRows;
-                painter.execute(()->{try{PanelPainter.refreshAppearance();pending=new Frame(info?PanelPainter.info(time,frames,latency,now/1e9,false):null,music?PanelPainter.music(track,a,h,seconds,previewSeek,remain):null,e?editorImage(info,music,hover,announce,ms):null,cds?PanelPainter.cooldowns(rows):null);}catch(Throwable error){log("Panel painting failed",error);}finally{painting.set(false);}});
+                final boolean cds=layout.cooldowns,names=layout.cooldownNames,minutes=layout.cooldownMinutes;final java.util.List<AgentCooldowns.Entry> rows=cooldownRows;
+                painter.execute(()->{try{PanelPainter.refreshAppearance();pending=new Frame(info?PanelPainter.info(time,frames,latency,now/1e9,false):null,music?PanelPainter.music(track,a,h,seconds,previewSeek,remain):null,e?editorImage(info,music,hover,announce,ms):null,cds?PanelPainter.cooldowns(rows,names,minutes):null);}catch(Throwable error){log("Panel painting failed",error);}finally{painting.set(false);}});
             }
             Frame update=pending;boolean dirty=update!=null;if(dirty){shown=update;pending=null;}if(shown==null)return;
             if(gl==null)gl=new AgentGL(glfwClass.getClassLoader());
@@ -98,12 +99,13 @@ public final class AgentHooks {
                 if(layout.info)gl.draw(0,shown.info,dirty,x(layout.infoX,layout.infoWidth())*scale,y(layout.infoY,layout.infoHeight())*scale,(float)(226*layout.infoScale()*scale),(float)(24*layout.infoScale()*scale));
                 if(layout.music)gl.draw(1,shown.music,dirty,(float)musicX*scale,(float)musicY*scale,(float)(272*musicScale*scale),(float)(116*musicScale*scale));
                 if(!editor&&layout.cooldowns&&shown.cooldowns!=null&&!cooldownRows.isEmpty()){double cs=layout.cooldownScale();gl.draw(3,shown.cooldowns,dirty,(float)((guiWidth-AgentCooldowns.WIDTH*cs)/2*scale),(guiHeight/2f+22)*scale,(float)(AgentCooldowns.WIDTH*cs*scale),(float)(shown.cooldowns.getHeight()/2f*cs*scale));}
-                if(editor)gl.draw(2,shown.editor,dirty,(guiWidth-320)/2f*scale,46*scale,320*scale,shown.editor==null?editorHeight()*scale:shown.editor.getHeight()/2f*scale);
+                if(editor)gl.draw(2,shown.editor,dirty,(guiWidth-320)/2f*scale,editorY()*scale,320*scale,shown.editor==null?editorHeight()*scale:shown.editor.getHeight()/2f*scale);
                 if(preview){double elapsed=(now-previewStart)/1e9;if(captures==0&&elapsed>4||captures==1&&elapsed>9||captures==2&&elapsed>13){capture(captures++);}if(elapsed>15)window("glfwSetWindowShouldClose",new Class<?>[]{long.class,boolean.class},window,true);}
             }finally{gl.end();}
         }catch(Throwable error){failed=true;media.close();log("Overlay disabled after a rendering error",error);}
     }
     static BufferedImage editorImage(boolean info,boolean music,boolean hover,boolean announce,double musicScale){
+        if(CooldownMenu.open)return CooldownMenu.paint();
         if(skyEditor)return skyImage();
         BufferedImage image=PanelPainter.canvas(320,278);Graphics2D g=PanelPainter.graphics(image);PanelPainter.glass(g,320,278,14,false);
         PanelPainter.text(g,"KYRO / Панели",14,10,290,13,PanelPainter.ACCENT,0,true);PanelPainter.text(g,"Тяни панели за фон · Right Shift / Esc — закрыть",14,30,290,8,PanelPainter.QUIET,0,false);
@@ -112,7 +114,7 @@ public final class AgentHooks {
         g.setColor(PanelPainter.ink(18));g.fillRoundRect(234,108,28,22,8,8);g.fillRoundRect(272,108,28,22,8,8);PanelPainter.text(g,"−",243,110,18,14,PanelPainter.WHITE,0,true);PanelPainter.text(g,"+",280,110,18,14,PanelPainter.WHITE,0,true);
         PanelPainter.text(g,"Размер острова · "+Math.round(layout.infoScale()*100)+"%",20,141,202,10,PanelPainter.QUIET,0,false);
         g.setColor(PanelPainter.ink(18));g.fillRoundRect(234,136,28,22,8,8);g.fillRoundRect(272,136,28,22,8,8);PanelPainter.text(g,"−",243,138,18,14,PanelPainter.WHITE,0,true);PanelPainter.text(g,"+",280,138,18,14,PanelPainter.WHITE,0,true);
-        button(g,12,164,"КД предметов",layout.cooldowns);PanelPainter.text(g,"Рядом с прицелом",172,171,132,8,PanelPainter.QUIET,0,false);
+        button(g,12,164,"КД предметов",layout.cooldowns);action(g,164,164,"Настроить ›");
         PanelPainter.text(g,"Размер КД · "+Math.round(layout.cooldownScale()*100)+"%",20,197,202,10,PanelPainter.QUIET,0,false);
         g.setColor(PanelPainter.ink(18));g.fillRoundRect(234,192,28,24,8,8);g.fillRoundRect(272,192,28,24,8,8);PanelPainter.text(g,"−",243,194,18,14,PanelPainter.WHITE,0,true);PanelPainter.text(g,"+",280,194,18,14,PanelPainter.WHITE,0,true);
         button(g,12,220,"Custom Sky",layout.customSky);action(g,164,220,"Настроить ›");
@@ -170,7 +172,7 @@ public final class AgentHooks {
     static void setEditor(boolean open)throws Exception{
         if(editor==open)return;
         if(open){wasLocked=cursor()==212995;AgentInput.releaseKeys(activeWindow);
-            skyEditor=false;skyColorEdit=-1;editor=true;if(wasLocked)cursor(212993);
+            CooldownMenu.open=false;CooldownMenu.fresh();skyEditor=false;skyColorEdit=-1;editor=true;if(wasLocked)cursor(212993);
         }else{dragging=-1;holding=0;seek=-1;save();if(wasLocked)cursor(212995);editor=false;}
     }
     public static boolean key(long window,int key,int action)throws Exception{
@@ -179,16 +181,18 @@ public final class AgentHooks {
     public static boolean key(long window,int key,int action,int mods)throws Exception{
         if(!ready||window!=activeWindow)return false;
         if(key==344){if(action==1)setEditor(!editor);return true;}
-        if(editor){if(key==256&&action==1)setEditor(false);else if(skyEditor&&skyColorEdit>=0)skyHexKey(key,action,mods);return true;}return false;
+        if(editor){if(key==256&&action==1)setEditor(false);else if(CooldownMenu.open)CooldownMenu.key(key,action,mods);else if(skyEditor&&skyColorEdit>=0)skyHexKey(key,action,mods);return true;}return false;
     }
+    public static boolean character(long window,int point){if(!ready||window!=activeWindow||!editor)return false;if(CooldownMenu.open)CooldownMenu.character(point);return true;}
     public static boolean mouse(long window,int button,int action)throws Exception{
         if(!ready||window!=activeWindow)return false;pointer();if(!editor&&cursor()==212995)return false;
         if(button!=0)return editor;
         if(action==0){if(dragging>=0){dragging=-1;save();return true;}PanelPainter.Track t=media.snapshot();if(holding!=0){if(seek>=0){media.command("seek",seek*t.duration*1000);previewUntil=System.nanoTime()+700_000_000L;}else media.command(holding<0?"previous":"next",0);holding=0;return true;}if(seek>=0&&previewUntil==Long.MAX_VALUE){media.command("seek",seek*t.duration*1000);previewUntil=System.nanoTime()+700_000_000L;return true;}return editor;}
         if(action!=1)return editor;
         double mx=mouseX,my=mouseY;
-        if(editor){double ex=(guiWidth-320)/2.0,ey=46;if(inside(mx,my,ex,ey,320,editorHeight())){
+        if(editor){double ex=(guiWidth-320)/2.0,ey=editorY();if(inside(mx,my,ex,ey,320,editorHeight())){
             double xx=mx-ex,yy=my-ey;
+            if(CooldownMenu.open){CooldownMenu.click(xx,yy);return true;}
             if(skyEditor){skyClick(xx,yy);return true;}
             if(inside(xx,yy,12,50,144,24))layout.info=!layout.info;else if(inside(xx,yy,164,50,144,24)){layout.music=!layout.music;media.enabled=layout.music;}
             else if(inside(xx,yy,12,78,144,24))layout.expandOnHover=!layout.expandOnHover;else if(inside(xx,yy,164,78,144,24))layout.announceTracks=!layout.announceTracks;
@@ -197,6 +201,7 @@ public final class AgentHooks {
             else if(inside(xx,yy,234,136,28,22))layout.infoScale=Math.max(.5,Math.round((layout.infoScale()-.05)*20)/20.0);
             else if(inside(xx,yy,272,136,28,22))layout.infoScale=Math.min(1,Math.round((layout.infoScale()+.05)*20)/20.0);
             else if(inside(xx,yy,12,164,144,24))layout.cooldowns=!layout.cooldowns;
+            else if(inside(xx,yy,164,164,144,24)){CooldownMenu.open=true;CooldownMenu.fresh();}
             else if(inside(xx,yy,234,192,28,24))layout.cooldownScale=Math.max(.5,Math.round((layout.cooldownScale()-.05)*20)/20.0);else if(inside(xx,yy,272,192,28,24))layout.cooldownScale=Math.min(1.25,Math.round((layout.cooldownScale()+.05)*20)/20.0);
             else if(inside(xx,yy,12,220,144,24))layout.customSky=!layout.customSky;else if(inside(xx,yy,164,220,144,24))skyEditor=true;
             else if(inside(xx,yy,12,248,164,22)){layout.infoX=.02;layout.infoY=.025;layout.musicX=.02;layout.musicY=.83;}else if(inside(xx,yy,240,248,70,22))setEditor(false);save();return true;

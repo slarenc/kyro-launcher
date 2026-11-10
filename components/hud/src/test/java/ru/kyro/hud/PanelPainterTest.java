@@ -19,6 +19,8 @@ public final class PanelPainterTest {
             check(Math.abs(bridge.snapshot().volume()-.7)<.001,"rapid volume steps accumulate before a Windows reply");
             MediaBridge.State other=new MediaBridge.State();other.source="Other player";other.volume=.4;bridge.state=other;
             check(bridge.snapshot().volume()==.4,"pending volume does not leak across sources");
+            other.playing=true;other.position=12000;other.duration=240000;other.playbackRate=2;bridge.receivedAt=System.nanoTime()-2_000_000_000L;
+            check(Math.abs(bridge.snapshot().position()-16)<.2,"smooth position respects playback speed between helper polls");other.playing=false;check(bridge.snapshot().position()==12,"paused timeline does not advance");
         }
         BufferedImage art=new BufferedImage(180,180,BufferedImage.TYPE_INT_ARGB);Graphics2D ag=art.createGraphics();
         ag.setPaint(new GradientPaint(0,0,new Color(84,51,116),180,180,new Color(222,133,168)));ag.fillRect(0,0,180,180);ag.drawImage(PanelPainter.LOGO,20,20,140,140,null);ag.dispose();

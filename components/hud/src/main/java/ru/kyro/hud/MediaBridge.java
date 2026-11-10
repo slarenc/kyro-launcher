@@ -19,7 +19,7 @@ final class MediaBridge implements AutoCloseable {
     static final class State {
         boolean available,playing,canToggle,canNext,canPrevious,canSeek;
         String title="",artist="",source="",error="",artwork;
-        long position,duration,artRevision; double volume=-1; int protocol;
+        long position,duration,artRevision; double volume=-1,playbackRate=1; int protocol;
     }
     volatile State state=new State();
     volatile BufferedImage cover;
@@ -83,7 +83,7 @@ final class MediaBridge implements AutoCloseable {
     }
     PanelPainter.Track snapshot(){
         State s=state;double position=s.position/1000.0;
-        if(s.playing)position+=Math.max(0,System.nanoTime()-receivedAt)/1_000_000_000.0;
+        if(s.playing)position+=Math.max(0,System.nanoTime()-receivedAt)/1_000_000_000.0*(Double.isFinite(s.playbackRate)&&s.playbackRate>0&&s.playbackRate<=16?s.playbackRate:1);
         if(s.duration>0)position=Math.min(position,s.duration/1000.0);
         double volume=s.source.equals(volumeSource)&&System.nanoTime()<volumeUntil?desiredVolume:s.volume;
         return new PanelPainter.Track(s.available,s.playing,s.canToggle,s.canPrevious,s.canNext,s.canSeek,s.title,s.artist,s.source,s.error,position,s.duration/1000.0,volume,cover);

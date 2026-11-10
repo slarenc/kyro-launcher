@@ -4,6 +4,7 @@ import java.lang.reflect.*;
 public final class ScopeHarness {
     public static void main(String[] args)throws Exception{
         Object p=new Object(),result=new Object();if(new net.minecraft.client.network.ClientPlayerInteractionManager().interactItem(p,result)!=result)throw new AssertionError("Cooldown hook changed use-item result");
+        if(new net.minecraft.client.network.ClientPlayerInteractionManager().interactBlock(p,new Object(),result)!=result)throw new AssertionError("Cooldown hook changed block-interaction result");
         Class<?> hooks=Class.forName("ru.kyro.builtin.BadgeHooks",true,null);Field field=hooks.getDeclaredField("SCOPE");field.setAccessible(true);ThreadLocal<?> depth=(ThreadLocal<?>)field.get(null);
         Runnable active=()->{if(((Number)depth.get()).intValue()<1)throw new AssertionError("Chat scope missing");};
         ChatHud.paint(active);if(((Number)depth.get()).intValue()!=0)throw new AssertionError("Scope leaked to scoreboard");

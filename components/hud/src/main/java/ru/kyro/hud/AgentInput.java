@@ -40,7 +40,7 @@ final class AgentInput implements InvocationHandler {
                 }
                 else if(kind.equals("scroll"))consumed=AgentHooks.scroll(window,((Number)args[2]).doubleValue());
                 else if(kind.equals("cursor"))consumed=AgentHooks.editor;
-                else if(kind.equals("char")||kind.equals("charMods"))consumed=AgentHooks.editor;
+                else if(kind.equals("char")||kind.equals("charMods"))consumed=AgentHooks.character(window,((Number)args[1]).intValue());
             }catch(Throwable error){AgentHooks.log("Input dispatch failed",error);}
             if(consumed)return null;return method.invoke(delegate,args);
         }
