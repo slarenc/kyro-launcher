@@ -1,6 +1,7 @@
 /target/
 /dist/
 /output/
+/logs/
 /publish/
 /.tools/
 /src-tauri/gen/
@@ -24,3 +25,7 @@
 !/tools/shortcut-info.vbs
 
 !/tools/build-hud.cjs
+!/tools/hud-media-smoke.cjs
+!/tools/hud-vanilla-smoke.cjs
+!/tools/hud-badge-smoke.cjs
+!/tools/hud-cooldowns-smoke.cjs

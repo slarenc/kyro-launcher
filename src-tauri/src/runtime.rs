@@ -161,14 +161,12 @@ pub async fn install_java(app: crate::app_context::AppContext) -> Result<String,
             .map_err(|e| e.to_string())?
             .settings
             .clone();
-        let manifest =
-            net::json("https://piston-meta.mojang.com/mc/game/version_manifest_v2.json").await?;
-        let url = manifest["versions"]
+        let (manifest,_) = net::minecraft_manifest(&state.root,Some(&settings.version)).await?;
+        let item = manifest["versions"]
             .as_array()
             .and_then(|v| v.iter().find(|v| v["id"] == settings.version))
-            .and_then(|v| v["url"].as_str())
             .ok_or("Нет версии Minecraft")?;
-        let meta = net::json(url).await?;
+        let meta = net::minecraft_version(&state.root,item).await?;
         let major = meta["javaVersion"]["majorVersion"].as_u64().unwrap_or(17);
         let path = resolve(&app, &settings, major, true).await?;
         {

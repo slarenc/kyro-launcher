@@ -25,9 +25,11 @@ const assert=require('node:assert/strict');
  });
  await page.reload();await page.locator('#play').waitFor();
  assert.equal(await page.locator('#account-name').textContent(),'TauriPreview');
+ assert.equal(await page.locator('#kyro-hud,#kyro-panels-dialog').count(),0);
+
  for(const name of ['catalog','screenshots','diagnostics','activity','notices','settings','play']){const link=page.locator('[data-page="'+name+'"]');if(await link.count())await link.click();}
  await page.screenshot({path:'output/app-preview/23-tauri-native.png'});
  assert.deepEqual(errors,[]);
- console.log('PASS: real Tauri IPC, isolated state, accounts, settings persistence, local services, navigation.',result);
+ console.log('PASS: real Tauri IPC, isolated state, accounts, settings, local services, automatic HUD interface, navigation.',result);
  }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});

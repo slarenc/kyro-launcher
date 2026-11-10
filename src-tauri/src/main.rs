@@ -105,6 +105,7 @@ fn save_settings(state: &State, mut settings: Settings) -> Result<(), String> {
     {
         return Err("Некорректный цвет".into());
     }
+    hud::sync_appearance(state, &settings)?;
     state.data.lock().map_err(|e| e.to_string())?.settings = settings;
     state.save()
 }
@@ -122,8 +123,8 @@ fn notices(state: &State, action: String, id: Option<String>) -> Result<(), Stri
     state.save()
 }
 
-async fn versions() -> Result<Value, String> {
-    let v = net::json("https://piston-meta.mojang.com/mc/game/version_manifest_v2.json").await?;
+async fn versions(root:&std::path::Path) -> Result<Value, String> {
+    let (v,_) = net::minecraft_manifest(root,None).await?;
     Ok(json!(v["versions"]
         .as_array()
         .ok_or("Нет списка версий")?
@@ -149,27 +150,11 @@ async fn version_library(state: &State) -> Result<Value, String> {
         .version
         .clone();
     let mut warning = String::new();
-    let cache = root.join("metadata/version-library.json");
-    let manifest = match net::json(
-        "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json",
-    )
-    .await
-    {
-        Ok(v) => {
-            if let Some(parent) = cache.parent() {
-                let _ = std::fs::create_dir_all(parent);
-            }
-            if let Ok(bytes) = serde_json::to_vec(&v) {
-                let _ = std::fs::write(&cache, bytes);
-            }
-            v
-        }
+    let manifest = match net::minecraft_manifest(&root,None).await {
+        Ok((v,cached)) => {if cached{warning="Серверы Mojang временно недоступны. Показан сохранённый список версий.".into();}v}
         Err(_error) => {
             warning = "Не удалось обновить список Minecraft. Проверь подключение и нажми «Обновить список». Показаны сохранённые версии.".into();
-            std::fs::read(&cache)
-                .ok()
-                .and_then(|bytes| serde_json::from_slice(&bytes).ok())
-                .unwrap_or_else(|| json!({"versions":[]}))
+            json!({"versions":[]})
         }
     };
     let mut releases: Vec<_> = manifest["versions"]
@@ -625,7 +610,7 @@ mod tests {
     #[tokio::test]
     #[ignore = "requires live Mojang / Modrinth / Fabric APIs"]
     async fn upstream_apis_and_verified_download() {
-        let releases = versions().await.expect("Mojang releases");
+        let releases = versions(&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../target/upstream-metadata")).await.expect("Mojang releases");
         assert!(releases.as_array().unwrap().contains(&json!("1.21.1")));
         let results = search_modrinth(
             "sodium".into(),

@@ -566,7 +566,18 @@ pub fn check_compatibility(state: &State) -> Result<Value, String> {
         .map_err(|e| e.to_string())?
         .settings
         .clone();
-    check_dir(&state.instance_dir(&s)?.join("mods"), &s)
+    let folder=state.instance_dir(&s)?.join("mods");
+    let mut report=check_dir(&folder, &s)?;
+    let mut files=Vec::new();
+    if folder.exists(){for entry in fs::read_dir(&folder).map_err(|e|e.to_string())?{
+        let entry=entry.map_err(|e|e.to_string())?;if entry.path().extension().is_none_or(|ext|ext!="jar"){continue;}
+        let meta=entry.metadata().map_err(|e|e.to_string())?;
+        files.push((entry.file_name().to_string_lossy().into_owned(),meta.len(),meta.modified().ok().and_then(|t|t.duration_since(std::time::UNIX_EPOCH).ok()).map(|t|t.as_nanos().to_string())));
+    }}
+    files.sort();
+    use sha2::{Digest,Sha256};
+    report["fingerprint"]=json!(format!("{:x}",Sha256::digest(serde_json::to_vec(&files).map_err(|e|e.to_string())?)));
+    Ok(report)
 }
 #[cfg(test)]
 mod tests {

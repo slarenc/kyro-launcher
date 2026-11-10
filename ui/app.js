@@ -37,7 +37,7 @@ function updateChrome(){
  const rgb=s().accent.slice(1).match(/../g).map(x=>parseInt(x,16));const luminance=rgb.map(c=>{c/=255;return c<=.04045?c/12.92:((c+.055)/1.055)**2.4;}).reduce((n,c,i)=>n+c*[.2126,.7152,.0722][i],0);document.documentElement.style.setProperty('--accent-ink',luminance>.179?'#100d18':'#ffffff');
  const themes={black:['#08070c','#f4f1f8','#89848f','#2a2631'],midnight:['#0d101b','#f4f1f8','#8e93a6','#282e42'],dark:['#15131a','#f4f1f8','#96909f','#342e3d'],light:['#f7f5fa','#211b2b','#797082','#ddd6e5']};
  const colors=themes[s().theme]||themes.black;['--bg','--text','--muted','--line'].forEach((v,i)=>document.documentElement.style.setProperty(v,colors[i]));
- document.documentElement.style.colorScheme=s().theme==='light'?'light':'dark';
+ document.documentElement.style.colorScheme=s().theme==='light'?'light':'dark';document.documentElement.dataset.theme=s().theme;
  $('#account-name').textContent=state.account?.name||'Аккаунты';
  $('#account-type').textContent=state.account?(state.account.kind==='offline'?'Офлайн-аккаунт':'Microsoft · Java Edition'):'Не выбран';
  $('.avatar').textContent=state.account?state.account.name.slice(0,1).toUpperCase():'+';
@@ -73,7 +73,7 @@ function updateLauncherBackground(){
  if(background.style.backgroundImage!==value)background.style.backgroundImage=value;
  document.getElementById('app').classList.toggle('has-background',!!image);
 }
-function home(){return `<div class="home ${s().home_layout==='card'?'home-card':''}"><div class="home-copy"><div class="eyebrow">MINECRAFT · JAVA EDITION</div>${packSelector()}<div class="version-display">${esc(s().version)}</div><select class="loader-display core-select" id="game-loader" aria-label="Ядро Minecraft" ${state.busy||s().instance_id?'disabled':''}>${['Vanilla','Fabric','Quilt','Forge','NeoForge'].map(l=>`<option ${l===s().loader?'selected':''}>${l}</option>`).join('')}</select><div class="version-controls"><select id="game-version" aria-label="Версия Minecraft" ${s().instance_id?'disabled':''}>${[...new Set([s().version,...releaseVersions])].map(v=>`<option ${v===s().version?'selected':''}>${esc(v)}</option>`).join('')}</select><span class="divider"></span><button class="text-button" id="all-versions">ВСЕ ВЕРСИИ</button><button id="kyro-hud" class="fps-boost" ${state.busy?'disabled':''}>✦ KYRO Panels</button><button id="fps-boost" class="fps-boost" ${state.busy?'disabled':''}>⚡ FPS-буст</button><button id="game-folder" class="home-folder" data-folder="instance" title="Открыть папку игры выбранного профиля или сборки">${icon('folder')}Папка</button></div><button class="primary play-button" id="play" ${state.busy&&!state.launch?.can_cancel?'disabled':''}>${icon('play')}<span>${state.launch?.can_cancel?'Отменить':state.busy?'ЗАПУСК…':'Играть'}</span></button><div class="home-note">${s().instance_id?'Выбрана сборка. Нажми «Играть», чтобы запустить её.':state.account?'Всё готово к твоей следующей истории.':'Добавь офлайн-аккаунт по нику или войди через Microsoft — нажми на профиль внизу меню.'}</div></div><div class="home-orbit"></div><span class="orbit-caption">JAVA EDITION / 01</span></div>`;}
+function home(){return `<div class="home ${s().home_layout==='card'?'home-card':''}"><div class="home-copy"><div class="eyebrow">MINECRAFT · JAVA EDITION</div>${packSelector()}<div class="version-display">${esc(s().version)}</div><select class="loader-display core-select" id="game-loader" aria-label="Ядро Minecraft" ${state.busy||s().instance_id?'disabled':''}>${['Vanilla','Fabric','Quilt','Forge','NeoForge'].map(l=>`<option ${l===s().loader?'selected':''}>${l}</option>`).join('')}</select><div class="version-controls"><select id="game-version" aria-label="Версия Minecraft" ${s().instance_id?'disabled':''}>${[...new Set([s().version,...releaseVersions])].map(v=>`<option ${v===s().version?'selected':''}>${esc(v)}</option>`).join('')}</select><button id="fps-boost" class="fps-boost" ${state.busy?'disabled':''} title="Оптимизация Minecraft" aria-label="FPS Boost"><span class="boost-mark" aria-hidden="true">ϟ</span><span>FPS</span></button><button id="game-folder" class="home-folder" data-folder="instance" title="Открыть папку игры выбранного профиля или сборки" aria-label="Папка игры">${icon('folder')}Папка</button></div><button class="primary play-button" id="play" ${state.busy&&!state.launch?.can_cancel?'disabled':''}>${icon('play')}<span>${state.launch?.can_cancel?'Отменить':state.busy?'ЗАПУСК…':'Играть'}</span></button><div class="home-note">${s().instance_id?'Выбрана сборка. Нажми «Играть», чтобы запустить её.':state.account?'Всё готово к твоей следующей истории.':'Добавь офлайн-аккаунт по нику или войди через Microsoft — нажми на профиль внизу меню.'}</div></div><div class="home-orbit"></div><span class="orbit-caption">JAVA EDITION / 01</span></div>`;}
 function activity(){
  const sessions=state.data.sessions;
  const total=sessions.reduce((n,x)=>n+x.seconds,0), byDay=new Map();
@@ -161,8 +161,6 @@ function bind(){
  const core=$('#game-loader');if(core)core.onchange=async()=>{s().loader=core.value;catalogData=null;if(await persist()){await sync();render();}};
  $$('[data-loader]').forEach(b=>b.onclick=async()=>{s().loader=b.dataset.loader;catalogData=null;if(await persist())render();});
  const version=$('#game-version');if(version)version.onchange=async()=>{s().version=version.value;catalogData=null;if(await persist()){await sync();render();}};
- if($('#all-versions'))$('#all-versions').onclick=e=>window.KyroPickers.openVersions(e.currentTarget);
- if($('#kyro-hud'))$('#kyro-hud').onclick=openKyroPanels;
  if($('#fps-boost'))$('#fps-boost').onclick=openFpsBoost;
  if($('#play'))$('#play').onclick=()=>state.launch?.can_cancel?$('#cancel-launch').click():runOperation('Подготовка Minecraft…',async()=>{if(!await persist())return false;if(!await window.KyroAssist.confirmCompatibility())return false;await invoke('launch_game');},true);
  if($('#activity-year'))$('#activity-year').onchange=e=>{year=Number(e.target.value);render();};
@@ -254,20 +252,4 @@ async function openFpsBoost(){
   dialog.innerHTML=header(s().version+' · '+s().loader)+`<div class="fps-error" role="alert"><strong>Не удалось подобрать моды</strong><p>${esc(String(e))}</p></div><footer class="fps-actions"><button id="fps-close">Закрыть</button><button id="fps-retry" class="primary">Повторить</button></footer>`;
   close();$('#fps-retry').onclick=openFpsBoost;
  }
-}
-
-async function openKyroPanels(){
- let dialog=document.querySelector('#kyro-panels-dialog');
- if(!dialog){dialog=document.createElement('dialog');dialog.id='kyro-panels-dialog';document.body.append(dialog);}
- dialog.innerHTML='<button class="dialog-close" aria-label="Закрыть">×</button><div class="eyebrow">KYRO / IN-GAME OVERLAY</div><h2>Твой космос. В игре.</h2><p class="muted">Проверяем выбранный профиль…</p>';
- dialog.querySelector('.dialog-close').onclick=()=>dialog.close();dialog.showModal();
- try{
- const status=await invoke('hud_status');if(!dialog.open)return;
- dialog.innerHTML='<button class="dialog-close" aria-label="Закрыть">×</button><div class="eyebrow">KYRO / IN-GAME OVERLAY</div><h2>Твой космос. В игре.</h2>'+
- '<div class="kyro-hud-preview"><div class="kyro-hud-info"><img src="kyro-logo.png" alt="KYRO" width="16" height="16"><span>12:30</span><span>FPS</span><span>ping</span></div><div class="kyro-hud-music"><i>♫</i><div><strong>Музыка из браузера</strong><small>Трек · Исполнитель</small></div><span>‹ &nbsp; Ⅱ &nbsp; ›</span></div><small>Внешний вид панелей</small></div>'+
- '<p>Правый Shift в игре открывает редактор. Перетаскивай панели мышью — позиции сохраняются для этого профиля.</p><p class="muted">Музыка из браузеров и приложений через медиапанель Windows. Поддержка названия, прогресса и кнопок зависит от сайта или приложения.</p><p class="help">Fabric 1.21.11 · Windows 10/11 · Fabric API включён в установку</p>'+
- '<footer class="fps-actions"><span>'+esc(status.version+' · '+status.loader)+'</span><button id="install-panels" class="primary" '+(!status.supported||status.installed||state.busy?'disabled':'')+'>'+(status.installed?'Уже установлено':status.supported?'Установить в профиль':'Нужен Fabric 1.21.11')+'</button></footer>';
- dialog.querySelector('.dialog-close').onclick=()=>dialog.close();
- dialog.querySelector('#install-panels').onclick=async()=>{dialog.close();await runOperation('Установка панелей KYRO…',()=>invoke('install_hud'));window.KyroFeatures.invalidateUpdates();};
- }catch(e){dialog.innerHTML='<h2>Панели KYRO</h2><p role="alert">'+esc(String(e))+'</p><button id="panels-close">Закрыть</button>';dialog.querySelector('button').onclick=()=>dialog.close();}
 }

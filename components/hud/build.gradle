@@ -1,0 +1,60 @@
+plugins { id 'java' }
+version = '2.0.0'
+repositories { mavenCentral() }
+dependencies {
+ implementation 'org.ow2.asm:asm:9.10.1'; implementation 'com.google.code.gson:gson:2.10.1'
+ def lwjglVersion=project.findProperty('lwjglVersion')?:'3.3.3'
+ for (module in ['lwjgl','lwjgl-glfw','lwjgl-opengl']) { testImplementation "org.lwjgl:${module}:${lwjglVersion}"; testRuntimeOnly "org.lwjgl:${module}:${lwjglVersion}:natives-windows" }
+}
+sourceSets {
+ main { java { setSrcDirs(['src/main/java']) }; resources { setSrcDirs(['src/main/resources']); include 'assets/kyro_hud/**' } }
+ relocation { java.srcDir 'src/build/java' }
+}
+tasks.withType(JavaCompile).configureEach { options.encoding='UTF-8'; options.release=8 }
+tasks.register('fatJar', Jar) {
+ dependsOn classes
+ archiveFileName='kyro-hud-agent-unshaded.jar'
+ duplicatesStrategy=DuplicatesStrategy.EXCLUDE
+ from sourceSets.main.output
+ from { configurations.runtimeClasspath.collect { zipTree(it) } }
+ exclude 'module-info.class','META-INF/versions/**','META-INF/*.SF','META-INF/*.RSA','META-INF/*.DSA'
+ manifest { attributes 'Premain-Class':'ru.kyro.hud.HudAgent','Can-Retransform-Classes':'true','Implementation-Version':project.version }
+}
+tasks.register('agentJar', JavaExec) {
+ dependsOn fatJar, relocationClasses
+ classpath=sourceSets.relocation.runtimeClasspath
+ mainClass='RelocateJar'
+ args tasks.fatJar.archiveFile.get().asFile.absolutePath,layout.buildDirectory.file('libs/kyro-hud-agent.jar').get().asFile.absolutePath,layout.buildDirectory.file('libs/kyro-hud-runtime.jar').get().asFile.absolutePath
+ inputs.file tasks.fatJar.archiveFile
+ outputs.file layout.buildDirectory.file('libs/kyro-hud-agent.jar')
+ outputs.file layout.buildDirectory.file('libs/kyro-hud-runtime.jar')
+}
+tasks.named('build') { dependsOn agentJar }
+tasks.named('test') { failOnNoDiscoveredTests=false }
+tasks.register('layoutTest',JavaExec) { dependsOn testClasses;classpath=sourceSets.test.runtimeClasspath;mainClass='ru.kyro.hud.PanelLayoutTest' }
+tasks.register('painterTest',JavaExec) { dependsOn testClasses;classpath=sourceSets.test.runtimeClasspath;mainClass='ru.kyro.hud.PanelPainterTest';systemProperty 'java.awt.headless','true' }
+tasks.named('check') { dependsOn 'glSmoke','layoutTest','painterTest' }
+tasks.register('badgeTest',JavaExec) { dependsOn testClasses;classpath=sourceSets.test.runtimeClasspath;mainClass='ru.kyro.hud.BadgeHooksTest' }
+tasks.named('check') { dependsOn 'badgeTest' }
+tasks.register('scopeSmoke',JavaExec){dependsOn agentJar,testClasses;classpath=sourceSets.test.output;mainClass='ru.kyro.hudtest.ScopeHarness';jvmArgs "-javaagent:${layout.buildDirectory.file('libs/kyro-hud-agent.jar').get().asFile.absolutePath}","-Dkyro.hud.config=${layout.buildDirectory.dir('qa/scope/config').get().asFile.absolutePath}"}
+tasks.named('check'){dependsOn 'scopeSmoke'}
+tasks.register('cooldownsTest',JavaExec){dependsOn testClasses;classpath=sourceSets.test.runtimeClasspath;mainClass='ru.kyro.hud.CooldownsTest';systemProperty 'java.awt.headless','true'}
+tasks.named('check'){dependsOn 'cooldownsTest'}
+tasks.register('skySettingsTest',JavaExec){dependsOn testClasses;classpath=sourceSets.test.runtimeClasspath;mainClass='ru.kyro.hud.SkySettingsTest';systemProperty 'java.awt.headless','true'}
+tasks.register('skySmoke',JavaExec){dependsOn agentJar,testClasses;classpath=sourceSets.test.output;mainClass='ru.kyro.hudtest.SkyHarness';jvmArgs "-javaagent:${layout.buildDirectory.file('libs/kyro-hud-agent.jar').get().asFile.absolutePath}","-Dkyro.hud.config=${layout.buildDirectory.dir('qa/sky/config').get().asFile.absolutePath}"}
+tasks.named('check'){dependsOn 'skySettingsTest','skySmoke'}
+tasks.register('presenceIntegration',JavaExec){dependsOn testClasses;classpath=sourceSets.test.runtimeClasspath;mainClass='ru.kyro.hud.PresenceHarness';args(project.findProperty('presenceUrl')?:'http://127.0.0.1:0')}
+tasks.register('glSmoke',JavaExec) {
+ dependsOn agentJar,testClasses
+ classpath=files(sourceSets.test.output,configurations.testRuntimeClasspath.filter { it.name.startsWith('lwjgl') })
+ if(project.hasProperty('moduleLwjgl')) {
+  def modular=configurations.testRuntimeClasspath.filter { it.name.startsWith('lwjgl')&&!it.name.contains('natives') }
+  classpath=files(sourceSets.test.output,configurations.testRuntimeClasspath.filter { it.name.startsWith('lwjgl')&&it.name.contains('natives') })
+  jvmArgs '--module-path',modular.asPath,'--add-modules','org.lwjgl,org.lwjgl.glfw,org.lwjgl.opengl'
+ }
+ mainClass='ru.kyro.hudtest.AgentHarness'
+ def mode=project.hasProperty('compat')?'compat':'core'
+ jvmArgs "-javaagent:${layout.buildDirectory.file('libs/kyro-hud-agent.jar').get().asFile.absolutePath}",'-Dkyro.hud.agentPreview=true',"-Dkyro.hud.config=${layout.buildDirectory.dir('qa/'+mode+'/config').get().asFile.absolutePath}","-Dkyro.hud.media=${file('../../src-tauri/resources/kyro-media.exe').absolutePath}","-Dkyro.hud.capture=${layout.buildDirectory.dir('reports/'+mode).get().asFile.absolutePath}"
+ args mode
+ if(project.hasProperty('java8Path'))executable=project.property('java8Path')
+}

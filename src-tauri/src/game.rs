@@ -76,13 +76,12 @@ pub async fn prepare(
     let state = app.state();
     let root = &state.root;
     progress(app, "Получение манифеста Minecraft", 0.02);
-    let manifest =
-        net::json("https://piston-meta.mojang.com/mc/game/version_manifest_v2.json").await?;
+    let (manifest,_) = net::minecraft_manifest(root,Some(&settings.version)).await?;
     let item = manifest["versions"]
         .as_array()
         .and_then(|vs| vs.iter().find(|v| v["id"] == settings.version))
         .ok_or("Версия не найдена")?;
-    let mut v = net::json(text(item, "url")?).await?;
+    let mut v = net::minecraft_version(root,item).await?;
     if v["arguments"].is_null() {
         return Err("Поддерживаются версии Minecraft 1.13 и новее".into());
     }
@@ -419,6 +418,13 @@ pub async fn launch_to(
             // Arguments are passed directly to Java, never through a shell.
             cmd.args(settings.jvm_args.split_whitespace())
                 .args(arguments(&v["arguments"]["jvm"], &vars));
+            // Built-in HUD is independent of Minecraft mappings and the selected mod loader.
+            let overlay = crate::hud::prepare(state, &settings)?;
+            cmd.arg(format!("-Dkyro.hud.player={}", vars.get("auth_player_name").ok_or("Нет имени игрока")?));
+            cmd.arg(format!("-Dkyro.hud.uuid={}", vars.get("auth_uuid").ok_or("Нет UUID игрока")?));
+            cmd.arg("-Dkyro.hud.presence=https://kyro-client-badges.vinousrhubarb4.chatgpt.site");
+            crate::hud::prepare_mappings(state, &settings, &v).await;
+            cmd.args(overlay);
             cmd.arg(text(&v, "mainClass")?)
                 .args(arguments(&v["arguments"]["game"], &vars));
             if let Some(address) = server {
