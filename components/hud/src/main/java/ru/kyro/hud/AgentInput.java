@@ -62,7 +62,8 @@ final class AgentInput implements InvocationHandler {
         if(name.equals("equals"))return proxy==args[0];if(name.equals("hashCode"))return System.identityHashCode(proxy);if(name.equals("toString"))return "KYRO "+kind+" callback";
         return method.invoke(delegate,args);
     }
-    static void releaseKeys(long window){AgentInput keys=keyboards.get(window);if(keys==null)return;for(Map.Entry<Integer,Integer> key:new HashMap<>(keys.heldKeys).entrySet())try{keys.callback.invoke(keys.delegate,window,key.getKey(),key.getValue(),0,0);}catch(Exception ignored){}keys.heldKeys.clear();}
+    static void resumePointer(long window){Object client=AgentHooks.game.clientObject();Object mouse=GameAccess.field(client,"mouseHandler");GameAccess.call(mouse,"setIgnoreFirstMove");}
+    static void releaseKeys(long window){if(AgentSDL.active())GameAccess.call(GameAccess.type("net.minecraft.client.KeyMapping",AgentHooks.glfw.getClassLoader()),"releaseAll");AgentInput keys=keyboards.get(window);if(keys==null)return;for(Map.Entry<Integer,Integer> key:new HashMap<>(keys.heldKeys).entrySet())try{keys.callback.invoke(keys.delegate,window,key.getKey(),key.getValue(),0,0);}catch(Exception ignored){}keys.heldKeys.clear();}
     static void tap(long window,int key){AgentInput keys=keyboards.get(window);if(keys==null)return;try{keys.callback.invoke(keys.delegate,window,key,0,1,0);keys.callback.invoke(keys.delegate,window,key,0,0,0);}catch(Exception error){AgentHooks.log("Menu key failed",error);}}
     static int binding(String binding,int fallback){
         try{Path options=Paths.get(System.getProperty("kyro.hud.config","config")).toAbsolutePath().getParent().resolve("options.txt");

@@ -22,8 +22,8 @@ public final class PanelLayout {
     static double strength(double value){return Double.isFinite(value)?Math.max(0,Math.min(1,value)):.5;}
     public boolean expandOnHover=true,announceTracks=true;
     public double musicScale=.65;
-    public double cooldownScale=.8;
-    public double cooldownScale(){return Double.isFinite(cooldownScale)?Math.max(.5,Math.min(1.25,cooldownScale)):.8;}
+    public int cooldownSizeRevision=1;public double cooldownScale=.7;
+    public double cooldownScale(){return Double.isFinite(cooldownScale)?Math.max(.2,Math.min(1.5,cooldownScale)):.7;}
     public double infoScale=.8;
     public double infoScale(){return Double.isFinite(infoScale)?Math.max(.5,Math.min(1,infoScale)):.8;}
     public int infoWidth(){return (int)Math.ceil(INFO_W*infoScale());}
@@ -51,6 +51,7 @@ public final class PanelLayout {
         if(!Files.exists(file))return new PanelLayout();
         PanelLayout result=json.fromJson(new String(Files.readAllBytes(file),java.nio.charset.StandardCharsets.UTF_8),PanelLayout.class);
         if(result==null)return new PanelLayout();
+        if(!new com.google.gson.JsonParser().parse(new String(Files.readAllBytes(file),java.nio.charset.StandardCharsets.UTF_8)).getAsJsonObject().has("cooldownSizeRevision"))result.cooldownScale=.7;
         result.infoX=sane(result.infoX);result.infoY=sane(result.infoY);
         result.musicX=sane(result.musicX);result.musicY=sane(result.musicY);
         result.musicScale=result.musicScale();

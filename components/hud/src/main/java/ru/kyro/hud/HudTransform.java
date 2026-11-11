@@ -15,6 +15,7 @@ final class HudTransform implements ClassFileTransformer {
     }
     boolean text(String name){return name.equals(textClass)||name.equals("net/minecraft/util/StringDecomposer")||name.equals("net/minecraft/text/TextVisitFactory")||name.equals("net/minecraft/class_5223")||name.equals("net/minecraft/util/text/TextProcessing");}
     public byte[] transform(ClassLoader loader,String name,Class<?> type,ProtectionDomain domain,byte[] bytes){
+        if(name.equals("org/lwjgl/sdl/SDLVideo")||name.equals("org/lwjgl/sdl/SDLEvents"))return sdl(name,bytes);
         if(name.equals(skyProbeClass)||name.equals("net/minecraft/world/attribute/EnvironmentAttributeProbe")||name.equals("net/minecraft/class_12202"))return sky(bytes);
         if(name.equals(gameModeClass)||name.equals("net/minecraft/client/multiplayer/MultiPlayerGameMode")||name.equals("net/minecraft/client/network/ClientPlayerInteractionManager")||name.equals("net/minecraft/class_636"))return cooldown(bytes);
         if(text(name))return badge(name,bytes);
@@ -48,6 +49,7 @@ final class HudTransform implements ClassFileTransformer {
             return writer.toByteArray();
         }catch(Throwable error){System.err.println("[KYRO HUD] GLFW hook failed: "+error);return null;}
     }
+    byte[] sdl(String name,byte[] bytes){try{ClassReader reader=new ClassReader(bytes);ClassWriter writer=new ClassWriter(reader,ClassWriter.COMPUTE_MAXS);reader.accept(new ClassVisitor(Opcodes.ASM9,writer){public MethodVisitor visitMethod(int access,String method,String desc,String signature,String[] exceptions){MethodVisitor delegate=super.visitMethod(access,method,desc,signature,exceptions);if((access&(Opcodes.ACC_NATIVE|Opcodes.ACC_ABSTRACT))!=0)return delegate;if(method.equals("SDL_GL_SwapWindow")&&desc.equals("(J)Z"))return new MethodVisitor(Opcodes.ASM9,delegate){public void visitCode(){super.visitCode();mv.visitVarInsn(Opcodes.LLOAD,0);mv.visitLdcInsn(Type.getObjectType(name));mv.visitMethodInsn(Opcodes.INVOKESTATIC,HOOK,"frame","(JLjava/lang/Class;)V",false);}};if(method.equals("SDL_PollEvent")&&desc.equals("(Lorg/lwjgl/sdl/SDL_Event;)Z"))return new MethodVisitor(Opcodes.ASM9,delegate){public void visitInsn(int opcode){if(opcode==Opcodes.IRETURN){mv.visitVarInsn(Opcodes.ALOAD,0);mv.visitMethodInsn(Opcodes.INVOKESTATIC,"ru/kyro/builtin/AgentSDL","event","(ZLjava/lang/Object;)Z",false);}super.visitInsn(opcode);}};return delegate;}},0);System.out.println("[KYRO HUD] Attached to SDL3: "+name);return writer.toByteArray();}catch(Throwable error){System.err.println("[KYRO HUD] SDL hook failed: "+error);return null;}}
     byte[] sky(byte[] bytes){
         try{ClassReader reader=new ClassReader(bytes);ClassWriter writer=new ClassWriter(reader,ClassWriter.COMPUTE_MAXS);reader.accept(new ClassVisitor(Opcodes.ASM9,writer){public MethodVisitor visitMethod(int access,String method,String desc,String signature,String[] exceptions){
             MethodVisitor original=super.visitMethod(access,method,desc,signature,exceptions);Type[] args=Type.getArgumentTypes(desc);

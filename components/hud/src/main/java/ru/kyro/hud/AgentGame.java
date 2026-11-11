@@ -8,6 +8,7 @@ import com.google.gson.*;
 
 /** Known named/intermediary aliases plus structural fallback for obfuscated vanilla clients. */
 final class AgentGame {
+    Object clientObject(){return client;}
     private Object client;private ClassLoader loader;private List<Field> players;Object localPlayer;
     private String clientClass="",playerField="",latencyField="",optionsName="",hideName="";
     private Field optionsField,hiddenField;private long optionsRetry;

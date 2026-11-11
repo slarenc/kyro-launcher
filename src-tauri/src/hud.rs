@@ -87,11 +87,14 @@ pub fn prepare(state:&State,settings:&Settings)->Result<Vec<String>,String>{
 }
 
 fn mapping_names(text:&str)->Value{
-    let mut result=json!({"mappingRevision":4});let mut section="";
+    let mut result=json!({"mappingRevision":8,"moduleClasses":{},"moduleMembers":{},"moduleSignatures":{},"moduleFields":{}});let mut section="";let mut module_owner=String::new();
     for line in text.lines(){
+        if line.trim_start().starts_with('#')||line.trim().is_empty(){continue;}
         if !line.starts_with(' '){
-            section="";
+            section="";module_owner.clear();
             if let Some((name,obfuscated))=line.trim_end_matches(':').split_once(" -> "){
+                result["moduleClasses"][name]=json!(obfuscated);
+                if ["net.minecraft.client.Minecraft","net.minecraft.client.Options","net.minecraft.client.MouseHandler","net.minecraft.client.Camera","net.minecraft.client.renderer.GameRenderer","net.minecraft.client.renderer.LightTexture","net.minecraft.client.renderer.ScreenEffectRenderer","net.minecraft.client.renderer.ItemInHandRenderer","net.minecraft.client.gui.components.ChatComponent","net.minecraft.client.GuiMessage","net.minecraft.client.multiplayer.MultiPlayerGameMode","net.minecraft.client.renderer.entity.EntityRenderDispatcher","net.minecraft.client.renderer.entity.EntityRenderer","net.minecraft.client.renderer.entity.player.PlayerRenderer","net.minecraft.client.gui.screens.PauseScreen","net.minecraft.client.gui.screens.ConfirmScreen","net.minecraft.world.entity.Entity","net.minecraft.world.entity.LivingEntity","net.minecraft.world.entity.player.Player","net.minecraft.world.entity.player.Inventory","net.minecraft.world.item.ItemStack","net.minecraft.world.item.Item","net.minecraft.world.effect.MobEffectInstance","net.minecraft.world.effect.MobEffect","net.minecraft.world.phys.Vec3","net.minecraft.world.phys.AABB","net.minecraft.client.multiplayer.ClientLevel","net.minecraft.world.level.Level","net.minecraft.network.chat.Component","net.minecraft.network.chat.MutableComponent","net.minecraft.network.chat.TextComponent","net.minecraft.nbt.CompoundTag","net.minecraft.nbt.ListTag","net.minecraft.nbt.Tag","net.minecraft.core.component.DataComponents","net.minecraft.core.component.DataComponentHolder","net.minecraft.core.component.DataComponentGetter","net.minecraft.core.Holder","net.minecraft.core.Holder$Reference","net.minecraft.core.Holder$Direct","net.minecraft.world.item.component.ItemContainerContents","net.minecraft.world.item.component.BundleContents","com.mojang.blaze3d.vertex.PoseStack","net.minecraft.client.renderer.state.CameraRenderState","net.minecraft.client.renderer.entity.state.EntityRenderState","net.minecraft.client.renderer.entity.state.LivingEntityRenderState"].contains(&name){module_owner=name.to_owned();}
                 if name=="net.minecraft.client.Minecraft"{section="client";result["clientClass"]=json!(obfuscated);}
                 if name=="net.minecraft.client.multiplayer.PlayerInfo"||name=="net.minecraft.client.network.NetworkPlayerInfo"{section="entry";}
                 if name=="net.minecraft.client.Options"{section="options";}
@@ -113,6 +116,14 @@ fn mapping_names(text:&str)->Value{
                 if ["net.minecraft.client.gui.components.ChatComponent","net.minecraft.client.gui.components.PlayerTabOverlay","net.minecraft.client.renderer.entity.EntityRenderer","net.minecraft.client.renderer.feature.NameTagFeatureRenderer"].contains(&name){if result.get("badgeScopes").is_none(){result["badgeScopes"]=json!([]);}result["badgeScopes"].as_array_mut().unwrap().push(json!(obfuscated));}
             }
         }else if let Some((field,obfuscated))=line.trim().split_once(" -> "){
+            if !module_owner.is_empty(){
+                let token=field.split_whitespace().last().unwrap_or("");
+                let member=if let Some((before,_))=field.split_once('('){before.split_whitespace().last().unwrap_or("").rsplit(':').next().unwrap_or("")}else{token};
+                if !member.is_empty(){let key=format!("{}#{}",module_owner,member);
+                    if !field.contains('('){result["moduleFields"][&key]=json!({"name":obfuscated,"type":field.split_whitespace().next().unwrap_or("")});}
+                    if let Some((before,after))=field.split_once('('){let returns=before.split_whitespace().next().unwrap_or("").rsplit(':').next().unwrap_or("");let params=after.split(')').next().unwrap_or("");let args:Vec<&str>=if params.is_empty(){vec![]}else{params.split(',').collect()};if result["moduleSignatures"].get(&key).is_none(){result["moduleSignatures"][&key]=json!([]);}result["moduleSignatures"][&key].as_array_mut().unwrap().push(json!({"name":obfuscated,"returns":returns,"args":args}));}
+if result["moduleMembers"].get(&key).is_none(){result["moduleMembers"][&key]=json!([]);}let list=result["moduleMembers"][&key].as_array_mut().unwrap();if !list.iter().any(|x|x==obfuscated){list.push(json!(obfuscated));}}
+            }
             if section=="gameMode"&&field.contains(" useItemOn("){result["useItemOnMethod"]=json!(obfuscated);}
             if section=="interaction"&&field.ends_with(" FAIL"){result["interactionFailField"]=json!(obfuscated);}
             if section=="components"&&field.ends_with(" ITEM_MODEL"){result["itemModelField"]=json!(obfuscated);}
@@ -134,10 +145,10 @@ pub async fn prepare_mappings(state:&State,settings:&Settings,version:&Value){
     // Render/input hooks never require mappings. These optional aliases improve vanilla ping lookup.
     let Some(url)=version["downloads"]["client_mappings"]["url"].as_str()else{return;};
     let Some(sha)=version["downloads"]["client_mappings"]["sha1"].as_str()else{return;};
-    let Ok(profile)=state.instance_dir(settings)else{return;};let names=profile.join("config/kyro-hud-mapping.json");if fs::read(&names).ok().and_then(|bytes|serde_json::from_slice::<Value>(&bytes).ok()).is_some_and(|value|value["mappingRevision"]==4&&value["textClass"].is_string()&&value["styleFontMethod"].is_string()&&value["badgeScopes"].is_array()&&value["connectionPlayersMethod"].is_string()&&value["playerCooldownMethod"].is_string()){return;}
+    let Ok(profile)=state.instance_dir(settings)else{return;};let names=profile.join("config/kyro-hud-mapping.json");if fs::read(&names).ok().and_then(|bytes|serde_json::from_slice::<Value>(&bytes).ok()).is_some_and(|value|value["mappingRevision"]==8&&value["sourceVersion"]==settings.version&&value["mappingSha"]==sha&&value["textClass"].is_string()&&value["styleFontMethod"].is_string()&&value["badgeScopes"].is_array()&&value["connectionPlayersMethod"].is_string()&&value["playerCooldownMethod"].is_string()){return;}
     let task=async{
         let cache=state.root.join("runtime/kyro-hud/mappings");owned_folder(&cache,&state.root)?;let file=cache.join(format!("{sha}.txt"));net::download(url,&file,Some(sha)).await?;
-        let text=fs::read_to_string(&file).map_err(|e|e.to_string())?;let bytes=serde_json::to_vec(&mapping_names(&text)).map_err(|e|e.to_string())?;replace_owned(&names,&bytes)
+        let text=fs::read_to_string(&file).map_err(|e|e.to_string())?;let mut map=mapping_names(&text);map["sourceVersion"]=json!(settings.version);map["mappingSha"]=json!(sha);let bytes=serde_json::to_vec(&map).map_err(|e|e.to_string())?;replace_owned(&names,&bytes)
     };
     let _=tokio::time::timeout(std::time::Duration::from_secs(15),task).await;
 }
@@ -193,9 +204,22 @@ mod tests{
         prepare(&state,&settings).unwrap();prepare(&state,&settings).unwrap();assert!(!profile.join("mods/kyro-hud.jar").exists());assert_eq!(fs::read(profile.join("mods/other.jar")).unwrap(),b"unrelated");assert_eq!(fs::read(profile.join("config/kyro-panels.json")).unwrap(),b"{\"music\":false}");fs::remove_dir_all(state.root).unwrap();
     }
     #[test]
-    fn official_names_are_optional_and_parse_into_small_alias_table(){let names=mapping_names("net.minecraft.client.Minecraft -> abc:\n    net.minecraft.client.player.LocalPlayer player -> p\nnet.minecraft.client.multiplayer.PlayerInfo -> xyz:\n    int latency -> l\nnet.minecraft.world.attribute.EnvironmentAttributeProbe -> probe:\n    java.lang.Object getValue(net.minecraft.world.attribute.EnvironmentAttribute,float) -> v\nnet.minecraft.world.attribute.EnvironmentAttributes -> attrs:\n    net.minecraft.world.attribute.EnvironmentAttribute SKY_COLOR -> s\n    net.minecraft.world.attribute.EnvironmentAttribute FOG_COLOR -> f\n    net.minecraft.world.attribute.EnvironmentAttribute WATER_FOG_COLOR -> w\n");assert_eq!(names["clientClass"],"abc");assert_eq!(names["playerField"],"p");assert_eq!(names["latencyField"],"l");assert_eq!(names["skyProbeClass"],"probe");assert_eq!(names["skyValueMethod"],"v");assert_eq!(names["skyAttributeField"],"s");assert_eq!(names["skyFogAttributeField"],"f");assert_eq!(names["mappingRevision"],4);}
+    fn official_names_are_optional_and_parse_into_small_alias_table(){let names=mapping_names("net.minecraft.client.Minecraft -> abc:\n# {fileName: Minecraft.java}\n    net.minecraft.client.player.LocalPlayer player -> p\nnet.minecraft.client.multiplayer.PlayerInfo -> xyz:\n    int latency -> l\nnet.minecraft.world.attribute.EnvironmentAttributeProbe -> probe:\n    java.lang.Object getValue(net.minecraft.world.attribute.EnvironmentAttribute,float) -> v\nnet.minecraft.world.attribute.EnvironmentAttributes -> attrs:\n    net.minecraft.world.attribute.EnvironmentAttribute SKY_COLOR -> s\n    net.minecraft.world.attribute.EnvironmentAttribute FOG_COLOR -> f\n    net.minecraft.world.attribute.EnvironmentAttribute WATER_FOG_COLOR -> w\n");assert_eq!(names["clientClass"],"abc");assert_eq!(names["playerField"],"p");assert_eq!(names["latencyField"],"l");assert_eq!(names["skyProbeClass"],"probe");assert_eq!(names["skyValueMethod"],"v");assert_eq!(names["skyAttributeField"],"s");assert_eq!(names["skyFogAttributeField"],"f");assert_eq!(names["mappingRevision"],8);}
     #[test]
     fn bootstrap_runtime_contains_java8_classes_without_game_dependencies(){
         let mut jar=zip::ZipArchive::new(std::io::Cursor::new(RUNTIME)).unwrap();let mut bytes=Vec::new();jar.by_name("ru/kyro/builtin/AgentHooks.class").unwrap().read_to_end(&mut bytes).unwrap();assert_eq!(u16::from_be_bytes([bytes[6],bytes[7]]),52);assert!(jar.by_name("fabric.mod.json").is_err());assert!(jar.by_name("ru/kyro/internal/gson/Gson.class").is_ok());
     }
+    #[test]
+    fn module_mappings_export_for_game_qa(){
+        if let Ok(folder)=std::env::var("KYRO_MODULE_TEST_DIR"){
+            for entry in fs::read_dir(folder).unwrap(){let dir=entry.unwrap().path();let input=dir.join("client.txt");if input.exists(){let text=fs::read_to_string(input).unwrap();fs::write(dir.join("mapping.json"),serde_json::to_vec(&mapping_names(&text)).unwrap()).unwrap();}}
+        }
+        let Ok(file)=std::env::var("KYRO_MODULE_TEST_MAP")else{return;};
+        let text=fs::read_to_string(file).unwrap();let map=mapping_names(&text);
+        assert!(map["moduleClasses"]["net.minecraft.client.Minecraft"].is_string());
+        assert!(map["moduleMembers"]["net.minecraft.client.Minecraft#player"].is_array());
+        assert!(map["moduleMembers"]["net.minecraft.client.gui.components.ChatComponent#addMessage"].is_array());
+        let target=Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap().join("target/module-mappings-qa.json");fs::write(target,serde_json::to_vec(&map).unwrap()).unwrap();
+    }
+
 }

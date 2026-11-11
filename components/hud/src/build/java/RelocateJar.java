@@ -29,7 +29,7 @@ public final class RelocateJar {
             Set<String> seen=new HashSet<>();seen.add("META-INF/MANIFEST.MF");Enumeration<JarEntry> entries=input.entries();
             while(entries.hasMoreElements()){
                 JarEntry entry=entries.nextElement();String original=entry.getName();
-                boolean launcher=original.startsWith("ru/kyro/hud/HudAgent")||original.startsWith("ru/kyro/hud/HudTransform")||original.startsWith("org/objectweb/asm/");
+                boolean launcher=original.startsWith("ru/kyro/hud/HudAgent")||original.startsWith("ru/kyro/hud/HudTransform")||original.startsWith("ru/kyro/hud/ModuleTransform")||original.startsWith("org/objectweb/asm/");
                 if((part==1)!=launcher)continue;
                 String name=rename(original,part==2);if(entry.isDirectory()||!seen.add(name))continue;
                 ByteArrayOutputStream buffer=new ByteArrayOutputStream();try(InputStream stream=input.getInputStream(entry)){byte[] block=new byte[8192];int n;while((n=stream.read(block))>=0)buffer.write(block,0,n);}

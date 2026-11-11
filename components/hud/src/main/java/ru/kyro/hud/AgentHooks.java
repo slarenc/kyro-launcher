@@ -47,7 +47,7 @@ public final class AgentHooks {
     public static void log(String message,Throwable error){if(!errors.add(message))return;String text="[KYRO HUD] "+message+": "+error;System.err.println(text);try{Files.createDirectories(config);Files.write(config.resolve("kyro-hud.log"),(text+System.lineSeparator()).getBytes(StandardCharsets.UTF_8),StandardOpenOption.CREATE,StandardOpenOption.APPEND);}catch(Exception ignored){}}
     static synchronized void save(){try{layout.save(config.resolve("kyro-panels.json"),JSON);}catch(Exception error){log("Settings could not be saved",error);}}
     public static Object wrap(long window,Object callback,String kind){return AgentInput.wrap(window,callback,kind);}
-    static Object window(String name,Class<?>[] signature,Object...args)throws Exception{Method m=windowMethods.get(name);if(m==null){m=glfw.getMethod(name,signature);windowMethods.put(name,m);}return m.invoke(null,args);}
+    static Object window(String name,Class<?>[] signature,Object...args)throws Exception{if(AgentSDL.active())return AgentSDL.window(name,args);Method m=windowMethods.get(name);if(m==null){m=glfw.getMethod(name,signature);windowMethods.put(name,m);}return m.invoke(null,args);}
     static int cursor()throws Exception{return ((Number)window("glfwGetInputMode",new Class<?>[]{long.class,int.class},activeWindow,208897)).intValue();}
     static void cursor(int mode)throws Exception{window("glfwSetInputMode",new Class<?>[]{long.class,int.class,int.class},activeWindow,208897,mode);}
     static void pointer()throws Exception{window("glfwGetCursorPos",new Class<?>[]{long.class,DoubleBuffer.class,DoubleBuffer.class},activeWindow,mx,my);mouseX=mx.get(0)*pixelWidth/Math.max(1,wx.get(0))/scale;mouseY=my.get(0)*pixelHeight/Math.max(1,wy.get(0))/scale;}
@@ -173,7 +173,7 @@ public final class AgentHooks {
         if(editor==open)return;
         if(open){wasLocked=cursor()==212995;AgentInput.releaseKeys(activeWindow);
             CooldownMenu.open=false;CooldownMenu.fresh();skyEditor=false;skyColorEdit=-1;editor=true;if(wasLocked)cursor(212993);
-        }else{dragging=-1;holding=0;seek=-1;save();if(wasLocked)cursor(212995);editor=false;}
+        }else{dragging=-1;holding=0;seek=-1;save();AgentInput.resumePointer(activeWindow);if(wasLocked)cursor(212995);editor=false;}
     }
     public static boolean key(long window,int key,int action)throws Exception{
         return key(window,key,action,0);
@@ -202,7 +202,7 @@ public final class AgentHooks {
             else if(inside(xx,yy,272,136,28,22))layout.infoScale=Math.min(1,Math.round((layout.infoScale()+.05)*20)/20.0);
             else if(inside(xx,yy,12,164,144,24))layout.cooldowns=!layout.cooldowns;
             else if(inside(xx,yy,164,164,144,24)){CooldownMenu.open=true;CooldownMenu.fresh();}
-            else if(inside(xx,yy,234,192,28,24))layout.cooldownScale=Math.max(.5,Math.round((layout.cooldownScale()-.05)*20)/20.0);else if(inside(xx,yy,272,192,28,24))layout.cooldownScale=Math.min(1.25,Math.round((layout.cooldownScale()+.05)*20)/20.0);
+            else if(inside(xx,yy,234,192,28,24))layout.cooldownScale=Math.max(.2,Math.round((layout.cooldownScale()-.05)*20)/20.0);else if(inside(xx,yy,272,192,28,24))layout.cooldownScale=Math.min(1.5,Math.round((layout.cooldownScale()+.05)*20)/20.0);
             else if(inside(xx,yy,12,220,144,24))layout.customSky=!layout.customSky;else if(inside(xx,yy,164,220,144,24))skyEditor=true;
             else if(inside(xx,yy,12,248,164,22)){layout.infoX=.02;layout.infoY=.025;layout.musicX=.02;layout.musicY=.83;}else if(inside(xx,yy,240,248,70,22))setEditor(false);save();return true;
         }}
