@@ -188,7 +188,7 @@ function bind(){
 async function runOperation(message,task,isGame=false){
  if(state.busy)return toast('Дождитесь завершения текущей операции.');
  state.busy=true;$('#operation').hidden=false;$('#operation-label').textContent=message;$('#operation-progress').value=0.01;updateChrome();render();$('#cancel-launch').hidden=true;
- try{const result=await task();if(result===false)return false;toast(isGame?'Игровая сессия завершена.':'Готово.');return true;}
+ try{const result=await task();if(result===false)return false;toast(isGame?'Minecraft запущен. Можно запустить ещё один экземпляр.':'Готово.');return true;}
  catch(e){if(String(e)==='Запуск отменён'){toast('Запуск отменён.');return false;}failure(e);if(isGame)navigate('diagnostics');return false;}
  finally{state.busy=false;$('#cancel-launch').hidden=true;$('#operation').hidden=true;await sync().catch(failure);render();}
 }

@@ -43,6 +43,7 @@ pub fn sync_appearance(state:&State,settings:&Settings)->Result<(),String>{
     fs::write(&temporary,bytes).and_then(|_|fs::rename(&temporary,folder.join("appearance.json"))).map_err(|e|e.to_string())
 }
 fn replace_owned(path:&Path,bytes:&[u8])->Result<(),String>{
+    if fs::read(path).is_ok_and(|existing|existing==bytes){return Ok(());}
     let temporary=path.with_extension("kyro-tmp");fs::write(&temporary,bytes).and_then(|_|fs::rename(temporary,path)).map_err(|e|e.to_string())
 }
 pub fn prepare_badge(state:&State,settings:&Settings)->Result<(),String>{

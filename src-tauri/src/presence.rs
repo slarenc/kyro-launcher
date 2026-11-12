@@ -27,6 +27,7 @@ enum Command {
     Stop,
 }
 pub struct Presence {
+    games: Mutex<Vec<(Settings, Option<String>, PathBuf)>>,
     sender: mpsc::Sender<Command>,
     status: Arc<Mutex<String>>,
 }
@@ -36,20 +37,34 @@ impl Presence {
         let status = Arc::new(Mutex::new("Discord: ожидание настройки".into()));
         let report = status.clone();
         std::thread::spawn(move || worker(state, receiver, report));
-        Self { sender, status }
+        Self {
+            sender,
+            status,
+            games: Mutex::new(Vec::new()),
+        }
     }
     pub fn status(&self) -> String {
         self.status.lock().map(|s| s.clone()).unwrap_or_default()
     }
     pub fn game_started(&self, settings: &Settings, server: Option<&str>, log: PathBuf) {
+        let mut games = self.games.lock().unwrap();
+        games.push((settings.clone(), server.map(str::to_owned), log.clone()));
         let _ = self.sender.send(Command::Game(
             settings.clone(),
             server.map(str::to_owned),
             log,
         ));
     }
-    pub fn game_finished(&self) {
-        let _ = self.sender.send(Command::Idle);
+    pub fn game_finished(&self, log: &std::path::Path) {
+        let mut games = self.games.lock().unwrap();
+        games.retain(|game| game.2 != log);
+        let command = match games.last() {
+            Some((settings, server, log)) => {
+                Command::Game(settings.clone(), server.clone(), log.clone())
+            }
+            None => Command::Idle,
+        };
+        let _ = self.sender.send(command);
     }
     pub fn shutdown(&self) {
         let _ = self.sender.send(Command::Stop);

@@ -90,10 +90,18 @@ pub async fn download(url: &str, path: &Path, sha: Option<&str>) -> Result<(), S
             return Err(format!("Контрольная сумма не совпала: {}", path.display()));
         }
     }
+    save_download(path, &bytes).await
+}
+async fn save_download(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    // Fabric Maven entries may omit hashes. Verify against the fetched content
+    // without replacing an identical JAR that another JVM has open on Windows.
+    if tokio::fs::read(path).await.is_ok_and(|existing| existing == bytes) {
+        return Ok(());
+    }
     if let Some(parent) = path.parent() {
         tokio::fs::create_dir_all(parent)
             .await
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| format!("{}: {e}", path.display()))?;
     }
     let part = path.with_extension("kyro-part");
     tokio::fs::write(&part, bytes)
@@ -102,7 +110,7 @@ pub async fn download(url: &str, path: &Path, sha: Option<&str>) -> Result<(), S
     if path.exists() {
         tokio::fs::remove_file(path)
             .await
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| format!("{}: {e}", path.display()))?;
     }
     tokio::fs::rename(part, path)
         .await
@@ -162,6 +170,23 @@ pub async fn download_sha256(url: &str, path: &Path, hash: &str) -> Result<(), S
 
 #[cfg(test)]
 mod tests{
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn unchanged_download_preserves_jar_locked_by_running_game() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let root = folder();
+        let path = root.join("fabric-loader.jar");
+        super::save_download(&path, b"library").await.unwrap();
+        let locked = std::fs::OpenOptions::new().read(true).share_mode(1).open(&path).unwrap();
+        assert_eq!(std::fs::remove_file(&path).unwrap_err().raw_os_error(), Some(32));
+        super::save_download(&path, b"library").await.unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), b"library");
+        drop(locked);
+        super::save_download(&path, b"updated library").await.unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), b"updated library");
+        std::fs::remove_file(path).unwrap();
+        std::fs::remove_dir(root).unwrap();
+    }
     use super::*;
     use tokio::io::{AsyncReadExt,AsyncWriteExt};
     fn folder()->std::path::PathBuf{let path=std::env::temp_dir().join(format!("kyro-metadata-{}",chrono::Utc::now().timestamp_nanos_opt().unwrap()));std::fs::create_dir_all(&path).unwrap();path}

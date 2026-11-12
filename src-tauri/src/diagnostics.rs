@@ -47,7 +47,7 @@ pub fn finish(
         json!(result.as_ref().err())
     };
     let _ = fs::write(path, serde_json::to_vec(&meta).unwrap_or_default());
-    let game = state.root.join("game.log");
+    let game = crate::game::latest_log(&state.root);
     let current = game
         .metadata()
         .ok()

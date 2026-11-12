@@ -258,7 +258,7 @@ impl State {
                 safe_segment(&settings.loader)?;
                 self.instance_dir(settings)
             }
-            "log" => Ok(self.root.join("game.log")),
+            "log" => Ok(crate::game::latest_log(&self.root)),
             "core-log" => Ok(self.root.join("core-install.log")),
             "screenshots" => Ok(self.instance_dir(settings)?.join("screenshots")),
             "diagnostics" => Ok(self.instance_dir(settings)?.join("kyro-diagnostics")),

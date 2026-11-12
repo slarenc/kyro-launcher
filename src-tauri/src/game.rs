@@ -12,6 +12,40 @@ use std::{
     time::Instant,
 };
 
+pub struct NativeDirectory(PathBuf);
+impl NativeDirectory {
+    fn new(parent: &Path) -> Result<Self, String> {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        let path = parent.join(run_id());
+        fs::create_dir(&path).map_err(|e| e.to_string())?;
+        Ok(Self(path))
+    }
+}
+impl Drop for NativeDirectory {
+    fn drop(&mut self) {
+        // This launch owns this unique directory; never remove another JVM's DLLs.
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
+fn run_id() -> String {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    format!(
+        "{}-{}-{}",
+        std::process::id(),
+        chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default(),
+        NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    )
+}
+pub fn latest_log(root: &Path) -> PathBuf {
+    fs::read_to_string(root.join("logs/latest-game.txt"))
+        .ok()
+        .filter(|name| {
+            name.starts_with("game-") && name.ends_with(".log") && safe_segment(name).is_ok()
+        })
+        .map(|name| root.join("logs").join(name))
+        .unwrap_or_else(|| root.join("game.log"))
+}
+
 fn text<'a>(v: &'a Value, key: &str) -> Result<&'a str, String> {
     v[key]
         .as_str()
@@ -71,17 +105,17 @@ fn child_path(root: &Path, relative: &str) -> Result<PathBuf, String> {
 pub async fn prepare(
     app: &crate::app_context::AppContext,
     settings: &Settings,
-) -> Result<(Value, Vec<PathBuf>, PathBuf, String, String), String> {
+) -> Result<(Value, Vec<PathBuf>, NativeDirectory, String, String), String> {
     safe_segment(&settings.version)?;
     let state = app.state();
     let root = &state.root;
     progress(app, "Получение манифеста Minecraft", 0.02);
-    let (manifest,_) = net::minecraft_manifest(root,Some(&settings.version)).await?;
+    let (manifest, _) = net::minecraft_manifest(root, Some(&settings.version)).await?;
     let item = manifest["versions"]
         .as_array()
         .and_then(|vs| vs.iter().find(|v| v["id"] == settings.version))
         .ok_or("Версия не найдена")?;
-    let mut v = net::minecraft_version(root,item).await?;
+    let mut v = net::minecraft_version(root, item).await?;
     if v["arguments"].is_null() {
         return Err("Поддерживаются версии Minecraft 1.13 и новее".into());
     }
@@ -127,11 +161,12 @@ pub async fn prepare(
         "Vanilla" => {}
         _ => return Err("Неизвестное ядро".into()),
     }
-    let natives = root
-        .join("versions")
-        .join(&settings.version)
-        .join("natives");
-    fs::create_dir_all(&natives).map_err(|e| e.to_string())?;
+    let natives = NativeDirectory::new(
+        &root
+            .join("versions")
+            .join(&settings.version)
+            .join("natives"),
+    )?;
     let mut jobs: Vec<(String, PathBuf, Option<String>, bool)> = Vec::new();
     let mut cp = Vec::new();
     for lib in v["libraries"].as_array().ok_or("Нет библиотек")? {
@@ -213,7 +248,7 @@ pub async fn prepare(
             if !name.to_string_lossy().ends_with(".dll") {
                 continue;
             }
-            let dest = natives.join(name.file_name().ok_or("Нет имени DLL")?);
+            let dest = natives.0.join(name.file_name().ok_or("Нет имени DLL")?);
             let mut output = fs::File::create(dest).map_err(|e| e.to_string())?;
             std::io::copy(&mut f, &mut output).map_err(|e| e.to_string())?;
         }
@@ -314,7 +349,7 @@ pub async fn launch_to(
     attempt: &crate::launch_control::LaunchAttempt,
 ) -> Result<(), String> {
     let state = app.state();
-    let (mut cmd, settings) = attempt
+    let (mut cmd, settings, natives, log_path) = attempt
         .prepare(async {
             let settings = state
                 .data
@@ -376,7 +411,10 @@ pub async fn launch_to(
                     state.root.join("assets").to_string_lossy().into_owned(),
                 ),
                 ("assets_index_name", index),
-                ("natives_directory", natives.to_string_lossy().into_owned()),
+                (
+                    "natives_directory",
+                    natives.0.to_string_lossy().into_owned(),
+                ),
                 ("classpath", cp),
                 ("launcher_name", "KYRO".into()),
                 ("launcher_version", env!("CARGO_PKG_VERSION").into()),
@@ -420,8 +458,14 @@ pub async fn launch_to(
                 .args(arguments(&v["arguments"]["jvm"], &vars));
             // Built-in HUD is independent of Minecraft mappings and the selected mod loader.
             let overlay = crate::hud::prepare(state, &settings)?;
-            cmd.arg(format!("-Dkyro.hud.player={}", vars.get("auth_player_name").ok_or("Нет имени игрока")?));
-            cmd.arg(format!("-Dkyro.hud.uuid={}", vars.get("auth_uuid").ok_or("Нет UUID игрока")?));
+            cmd.arg(format!(
+                "-Dkyro.hud.player={}",
+                vars.get("auth_player_name").ok_or("Нет имени игрока")?
+            ));
+            cmd.arg(format!(
+                "-Dkyro.hud.uuid={}",
+                vars.get("auth_uuid").ok_or("Нет UUID игрока")?
+            ));
             cmd.arg("-Dkyro.hud.presence=https://kyro-client-badges.vinousrhubarb4.chatgpt.site");
             crate::hud::prepare_mappings(state, &settings, &v).await;
             cmd.args(overlay);
@@ -430,14 +474,21 @@ pub async fn launch_to(
             if let Some(address) = server {
                 cmd.args(crate::servers::connect_args(&settings.version, address)?);
             }
-            let log = fs::File::create(state.root.join("game.log")).map_err(|e| e.to_string())?;
+            let logs = state.root.join("logs");
+            fs::create_dir_all(&logs).map_err(|e| e.to_string())?;
+            let log_path = logs.join(format!("game-{}.log", run_id()));
+            let log = fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&log_path)
+                .map_err(|e| e.to_string())?;
             cmd.stdout(Stdio::from(log.try_clone().map_err(|e| e.to_string())?))
                 .stderr(Stdio::from(log));
             #[cfg(windows)]
             {
                 cmd.creation_flags(0x08000000);
             }
-            Ok((cmd, settings))
+            Ok((cmd, settings, natives, log_path))
         })
         .await?;
     attempt.start_game()?;
@@ -447,7 +498,11 @@ pub async fn launch_to(
         .map_err(|e| format!("Не удалось запустить Java: {e}"))?;
     progress(&app, "Minecraft запущен", 1.0);
     app.presence
-        .game_started(&settings, server, state.root.join("game.log"));
+        .game_started(&settings, server, log_path.clone());
+    let _ = fs::write(
+        state.root.join("logs/latest-game.txt"),
+        log_path.file_name().unwrap().to_string_lossy().as_bytes(),
+    );
     let start = Instant::now();
     let started = chrono::Utc::now().to_rfc3339();
     match settings.launch_behavior.as_str() {
@@ -455,36 +510,76 @@ pub async fn launch_to(
         "minimize" => app.window(crate::app_context::WindowAction::Minimize),
         _ => {}
     }
-    let result = child.wait().await;
-    app.presence.game_finished();
-    app.window(crate::app_context::WindowAction::Restore);
-    let exit = result.map_err(|e| e.to_string())?;
-    state
-        .data
-        .lock()
-        .map_err(|e| e.to_string())?
-        .sessions
-        .push(Session {
-            started,
-            seconds: start.elapsed().as_secs(),
-            version: settings.version,
-            loader: settings.loader,
-            exit_code: exit.code(),
-        });
-    state.save()?;
-    if !exit.success() {
-        return Err(format!(
-            "Игра завершилась с кодом {:?}. Подробности в game.log (Настройки → Лог игры)",
-            exit.code()
-        ));
-    }
-    progress(&app, "Сессия сохранена", 1.0);
+    // Return after spawning so the next launch can prepare while this JVM runs.
+    tokio::spawn(async move {
+        let state = app.state();
+        let result = child.wait().await;
+        drop(natives);
+        app.presence.game_finished(&log_path);
+        app.window(crate::app_context::WindowAction::Restore);
+        let result = (|| -> Result<(), String> {
+            let exit = result.map_err(|e| e.to_string())?;
+            state
+                .data
+                .lock()
+                .map_err(|e| e.to_string())?
+                .sessions
+                .push(Session {
+                    started,
+                    seconds: start.elapsed().as_secs(),
+                    version: settings.version,
+                    loader: settings.loader,
+                    exit_code: exit.code(),
+                });
+            state.save()?;
+            if !exit.success() {
+                return Err(format!(
+                    "Игра завершилась с кодом {:?}. Лог: {}",
+                    exit.code(),
+                    log_path.display()
+                ));
+            }
+            Ok(())
+        })();
+        if let Err(error) = result {
+            state.notify("Minecraft завершился с ошибкой", &error);
+        }
+        let _ = app.emit("state-changed", ());
+    });
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn simultaneous_launches_own_separate_native_files() {
+        let root = std::env::temp_dir().join(format!("kyro-native-test-{}", run_id()));
+        let first = NativeDirectory::new(&root).unwrap();
+        let second = NativeDirectory::new(&root).unwrap();
+        assert_ne!(first.0, second.0);
+        fs::write(first.0.join("test.dll"), b"first").unwrap();
+        fs::write(second.0.join("test.dll"), b"second").unwrap();
+        let first_path = first.0.clone();
+        drop(first);
+        assert!(!first_path.exists());
+        assert_eq!(fs::read(second.0.join("test.dll")).unwrap(), b"second");
+        drop(second);
+        fs::remove_dir(root).unwrap();
+    }
+    #[test]
+    fn latest_log_keeps_legacy_fallback_and_rejects_traversal() {
+        let root = std::env::temp_dir().join(format!("kyro-log-test-{}", run_id()));
+        fs::create_dir_all(root.join("logs")).unwrap();
+        assert_eq!(latest_log(&root), root.join("game.log"));
+        fs::write(root.join("logs/latest-game.txt"), "game-123.log").unwrap();
+        assert_eq!(latest_log(&root), root.join("logs/game-123.log"));
+        fs::write(root.join("logs/latest-game.txt"), "game-../../outside.log").unwrap();
+        assert_eq!(latest_log(&root), root.join("game.log"));
+        fs::remove_file(root.join("logs/latest-game.txt")).unwrap();
+        fs::remove_dir(root.join("logs")).unwrap();
+        fs::remove_dir(root).unwrap();
+    }
     #[test]
     fn rules_respect_order_and_features() {
         assert!(allowed(
