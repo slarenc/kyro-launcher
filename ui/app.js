@@ -18,10 +18,10 @@ const paths = {
 const icon = name => `<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="${paths[name] || paths.box}"/></svg>`;
 const labels = {play:'Играть',catalog:'Каталог',screenshots:'Скриншоты',diagnostics:'Диагностика',activity:'Активность',notifications:'Уведомления',settings:'Настройки'};
 const native = !!window.__TAURI__;
-const defaults = {auto_java:true,home_layout:'orbit',home_background:'',username:'Nova',version:'1.21.1',loader:'Fabric',memory_gb:6,java_path:'java',jvm_args:'-XX:+UseG1GC -XX:MaxGCPauseMillis=50',download_threads:8,launch_behavior:'hide',language:'ru',theme:'black',accent:'#a185cf',mod_notifications:true,system_notifications:true,microsoft_client_id:''};
+const defaults = {auto_java:true,home_layout:'orbit',home_background:'',username:'Nova',version:'1.21.11',loader:'Fabric',memory_gb:6,java_path:'java',jvm_args:'-XX:+UseG1GC -XX:MaxGCPauseMillis=50',download_threads:8,launch_behavior:'hide',language:'ru',theme:'black',accent:'#a185cf',mod_notifications:true,system_notifications:true,microsoft_client_id:''};
 let state = {data:{settings:{...defaults},sessions:[],notices:[],installed:[]},account:null,busy:false};
 let page = 'play', settingsTab = 'general', catalogKind = 'mod', catalogOffset = 0, catalogQuery = '', catalogData = null, catalogError = '', catalogLoading = false, catalogSeq = 0;
-let noticeFilter='all', year=new Date().getFullYear(), releaseVersions=['1.21.1'], toastTimer, saveTimer, loginTimer, refreshTimer;
+let noticeFilter='all', year=new Date().getFullYear(), releaseVersions=['1.21.11'], toastTimer, saveTimer, loginTimer, refreshTimer;
 const invoke = (command,args={}) => native ? window.__TAURI__.core.invoke(command,args) : Promise.reject(new Error('Откройте приложение KYRO. В браузере доступен только предпросмотр интерфейса.'));
 function toast(message){ $('#toast').textContent=String(message);$('#toast').hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('#toast').hidden=true,7000); }
 function failure(e){toast(e?.message || String(e));}
@@ -187,7 +187,7 @@ function bind(){
 }
 async function runOperation(message,task,isGame=false){
  if(state.busy)return toast('Дождитесь завершения текущей операции.');
- state.busy=true;$('#operation').hidden=false;$('#operation-label').textContent=message;$('#operation-progress').value=0.01;updateChrome();render();$('#cancel-launch').hidden=true;
+ state.busy=true;$('#operation').hidden=false;$('#operation-label').textContent=message;$('#operation-progress').removeAttribute('value');$('#operation-percent').textContent='…';$('#operation-speed').hidden=true;updateChrome();render();$('#cancel-launch').hidden=true;
  try{const result=await task();if(result===false)return false;toast(isGame?'Minecraft запущен. Можно запустить ещё один экземпляр.':'Готово.');return true;}
  catch(e){if(String(e)==='Запуск отменён'){toast('Запуск отменён.');return false;}failure(e);if(isGame)navigate('diagnostics');return false;}
  finally{state.busy=false;$('#cancel-launch').hidden=true;$('#operation').hidden=true;await sync().catch(failure);render();}
@@ -225,7 +225,7 @@ $('#close').onclick=()=>{if(state.busy){toast('Дождитесь заверше
 async function boot(){
  if(native){window.KyroFeatures.checkUpdate(true);setInterval(()=>window.KyroFeatures.checkUpdate(true),60*1000);window.addEventListener("focus",()=>window.KyroFeatures.checkUpdate(true));}
  try{if(!native){const saved=JSON.parse(localStorage.getItem('kyro-preview-settings')||'null');if(saved)saved&&Object.assign(state.data.settings,saved);}await sync();render();
- if(native){await window.__TAURI__.event.listen('launch-state',e=>{state.launch=e.payload;$('#cancel-launch').hidden=!e.payload.can_cancel;render();});await window.__TAURI__.event.listen('progress',e=>{$('#operation').hidden=false;$('#operation-label').textContent=e.payload.message;$('#operation-progress').value=e.payload.fraction;if(e.payload.message==='Minecraft запущен')$('#cancel-launch').hidden=true;window.KyroPickers.progress(e.payload.message);});await window.__TAURI__.event.listen('state-changed',async()=>{await sync();render();});await window.__TAURI__.event.listen('close-blocked',()=>toast('Дождитесь завершения игры или установки.'));
+ if(native){await window.__TAURI__.event.listen('launch-state',e=>{state.launch=e.payload;$('#cancel-launch').hidden=!e.payload.can_cancel;render();});await window.__TAURI__.event.listen('progress',e=>{$('#operation').hidden=false;$('#operation-label').textContent=e.payload.message;const fraction=Number(e.payload.fraction);if(e.payload.fraction!=null&&Number.isFinite(fraction)){const value=Math.max(0,Math.min(1,fraction));$('#operation-progress').value=value;$('#operation-percent').textContent=Math.round(value*100)+'%';}else{$('#operation-progress').removeAttribute('value');$('#operation-percent').textContent='…';}const speed=Number(e.payload.bytes_per_second);$('#operation-speed').hidden=!(Number.isFinite(speed)&&speed>0);$('#operation-speed').textContent='· '+(speed/1048576).toLocaleString('ru-RU',{maximumFractionDigits:1})+' МБ/с';$('#operation').title=e.payload.message;if(e.payload.message==='Minecraft запущен')$('#cancel-launch').hidden=true;window.KyroPickers.progress(e.payload.message);});await window.__TAURI__.event.listen('state-changed',async()=>{await sync();render();});await window.__TAURI__.event.listen('close-blocked',()=>toast('Дождитесь завершения игры или установки.'));
   invoke('versions').then(v=>{releaseVersions=v.filter(v=>!/^1\.(?:[0-9]|1[0-2])(?:\.|$)/.test(v));if(page==='play')render();}).catch(e=>toast('Не удалось обновить список версий: '+e));
  }}catch(e){failure(e);render();}
 }

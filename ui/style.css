@@ -141,3 +141,21 @@ select.native-select-source{display:none!important}
 .brand{gap:11px;padding-left:10px;height:40px}
 .brand .brand-logo{width:36px;height:36px}
 .brand b{font-family:var(--sans);font-size:21px;font-weight:600;line-height:1;letter-spacing:.18em;margin-right:-.18em;background:linear-gradient(110deg,var(--text) 30%,color-mix(in srgb,var(--text) 62%,var(--accent)) 100%);background-clip:text;-webkit-background-clip:text;color:transparent}
+
+/* Minimal progress under the brand. */
+.sidebar .operation{position:static;width:auto;align-self:flex-start;flex-shrink:0;margin:-4px 0 12px 10px;padding:0;background:none;border:0;border-radius:0;box-shadow:none;font-size:11px}
+.operation .operation-pill{position:relative;isolation:isolate;display:flex;justify-content:center;min-width:52px;min-height:22px;padding:3px 10px;overflow:hidden;border-radius:20px;background:var(--accent-wash)}
+.operation-pill progress{position:absolute;inset:0;z-index:-1;width:100%;height:100%;margin:0;opacity:.45;border-radius:20px;overflow:hidden}
+.operation-pill progress::-webkit-progress-bar{background:transparent}
+.operation-pill progress::-webkit-progress-value{background:var(--accent)}
+#operation-percent{font-size:11px;line-height:16px;font-weight:700;font-variant-numeric:tabular-nums}
+#operation-label,#operation-dismiss{display:none}
+.operation .operation-actions{padding:0;justify-content:flex-start}
+.operation-actions:has(#cancel-launch[hidden]){display:none}
+.operation-actions button{font-size:10px;padding:4px 0 0}
+
+.operation .operation-pill{gap:4px;padding:3px 10px;min-height:24px}
+#operation-percent,#operation-speed{font-size:11px;line-height:18px;font-weight:700;white-space:nowrap;font-variant-numeric:tabular-nums}
+
+/* Selected version typeface. */
+.home .version-display{font-family:Georgia,serif;font-weight:400}

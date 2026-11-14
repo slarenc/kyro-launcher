@@ -117,6 +117,12 @@ async fn save_download(path: &Path, bytes: &[u8]) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 pub async fn download_sha256(url: &str, path: &Path, hash: &str) -> Result<(), String> {
+    download_sha256_with_progress(url, path, hash, |_, _, _| {}).await
+}
+pub async fn download_sha256_with_progress(
+    url: &str, path: &Path, hash: &str,
+    mut progress: impl FnMut(u64, Option<u64>, f64) + Send,
+) -> Result<(), String> {
     use sha2::Sha256;
     if hash.len() != 64
         || !hash.bytes().all(|b| b.is_ascii_hexdigit())
@@ -139,12 +145,21 @@ pub async fn download_sha256(url: &str, path: &Path, hash: &str) -> Result<(), S
     if response.url().scheme() != "https" {
         return Err("Перенаправление на небезопасный адрес".into());
     }
+    let total = response.content_length();
+    let mut sample_time = std::time::Instant::now();
+    let mut sample_bytes = 0usize;
     let mut bytes = Vec::new();
     while let Some(chunk) = response.chunk().await.map_err(|e| e.to_string())? {
         if bytes.len() + chunk.len() > 1024 * 1024 * 1024 {
             return Err("Файл слишком большой".into());
         }
         bytes.extend_from_slice(&chunk);
+        let elapsed = sample_time.elapsed().as_secs_f64();
+        if elapsed >= 0.25 {
+            progress(bytes.len() as u64, total, (bytes.len() - sample_bytes) as f64 / elapsed);
+            sample_time = std::time::Instant::now();
+            sample_bytes = bytes.len();
+        }
     }
     if !format!("{:x}", Sha256::digest(&bytes)).eq_ignore_ascii_case(hash) {
         return Err("SHA-256 загруженного файла не совпал".into());

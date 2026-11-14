@@ -89,8 +89,12 @@ pub async fn install_launcher_update(app: crate::app_context::AppContext) -> Res
             .as_str()
             .and_then(|s| s.strip_prefix("sha256:"))
             .ok_or("Нет SHA-256 релиза")?;
-        crate::game::progress(&app, "Загрузка обновления KYRO", 0.2);
-        net::download_sha256(info["url"].as_str().ok_or("Нет URL")?, &source, hash).await?;
+        crate::game::progress(&app, "Загрузка обновления KYRO", 0.0);
+        net::download_sha256_with_progress(info["url"].as_str().ok_or("Нет URL")?, &source, hash, |received, total, speed| {
+            let fraction = total.filter(|n| *n > 0).map(|n| (received as f64 / n as f64).min(1.0));
+            let _ = app.emit("progress", json!({"message":"Загрузка обновления KYRO","fraction":fraction,"bytes_per_second":speed}));
+        }).await?;
+        crate::game::progress(&app, "Обновление загружено", 1.0);
         let target = std::env::current_exe().map_err(|e| e.to_string())?;
         let helper = updates.join(format!(
             "kyro-update-helper-{}.exe",
