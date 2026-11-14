@@ -1,5 +1,5 @@
 'use strict';
-const CURRENT_LAUNCHER_VERSION = '0.8.3';
+const CURRENT_LAUNCHER_VERSION = '0.8.4';
 const $ = (q, root = document) => root.querySelector(q);
 const $$ = (q, root = document) => [...root.querySelectorAll(q)];
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -185,12 +185,12 @@ function bind(){
  if($('#verify'))$('#verify').onclick=()=>runOperation('Проверка Minecraft…',()=>invoke('verify_files'));
  $$('[data-folder]').forEach(b=>b.onclick=()=>invoke('open_folder',{target:b.dataset.folder}).then(path=>toast('Открыто: '+path)).catch(failure));
 }
-async function runOperation(message,task,isGame=false){
+async function runOperation(message,task,isGame=false,isUpdate=false){
  if(state.busy)return toast('Дождитесь завершения текущей операции.');
- state.busy=true;$('#operation').hidden=false;$('#operation-label').textContent=message;$('#operation-progress').removeAttribute('value');$('#operation-percent').textContent='…';$('#operation-speed').hidden=true;updateChrome();render();$('#cancel-launch').hidden=true;
+ state.busy=true;state.updateProgress=isUpdate;$('#operation').hidden=!isUpdate;$('#operation-label').textContent=message;$('#operation-progress').removeAttribute('value');$('#operation-percent').textContent='…';$('#operation-speed').hidden=true;updateChrome();render();$('#cancel-launch').hidden=true;
  try{const result=await task();if(result===false)return false;toast(isGame?'Minecraft запущен. Можно запустить ещё один экземпляр.':'Готово.');return true;}
  catch(e){if(String(e)==='Запуск отменён'){toast('Запуск отменён.');return false;}failure(e);if(isGame)navigate('diagnostics');return false;}
- finally{state.busy=false;$('#cancel-launch').hidden=true;$('#operation').hidden=true;await sync().catch(failure);render();}
+ finally{state.busy=false;state.updateProgress=false;$('#cancel-launch').hidden=true;$('#operation').hidden=true;await sync().catch(failure);render();}
 }
 function openAccount(){
  clearTimeout(loginTimer);const dialog=$('#account-dialog');
@@ -225,7 +225,7 @@ $('#close').onclick=()=>{if(state.busy){toast('Дождитесь заверше
 async function boot(){
  if(native){window.KyroFeatures.checkUpdate(true);setInterval(()=>window.KyroFeatures.checkUpdate(true),60*1000);window.addEventListener("focus",()=>window.KyroFeatures.checkUpdate(true));}
  try{if(!native){const saved=JSON.parse(localStorage.getItem('kyro-preview-settings')||'null');if(saved)saved&&Object.assign(state.data.settings,saved);}await sync();render();
- if(native){await window.__TAURI__.event.listen('launch-state',e=>{state.launch=e.payload;$('#cancel-launch').hidden=!e.payload.can_cancel;render();});await window.__TAURI__.event.listen('progress',e=>{$('#operation').hidden=false;$('#operation-label').textContent=e.payload.message;const fraction=Number(e.payload.fraction);if(e.payload.fraction!=null&&Number.isFinite(fraction)){const value=Math.max(0,Math.min(1,fraction));$('#operation-progress').value=value;$('#operation-percent').textContent=Math.round(value*100)+'%';}else{$('#operation-progress').removeAttribute('value');$('#operation-percent').textContent='…';}const speed=Number(e.payload.bytes_per_second);$('#operation-speed').hidden=!(Number.isFinite(speed)&&speed>0);$('#operation-speed').textContent='· '+(speed/1048576).toLocaleString('ru-RU',{maximumFractionDigits:1})+' МБ/с';$('#operation').title=e.payload.message;if(e.payload.message==='Minecraft запущен')$('#cancel-launch').hidden=true;window.KyroPickers.progress(e.payload.message);});await window.__TAURI__.event.listen('state-changed',async()=>{await sync();render();});await window.__TAURI__.event.listen('close-blocked',()=>toast('Дождитесь завершения игры или установки.'));
+ if(native){await window.__TAURI__.event.listen('launch-state',e=>{state.launch=e.payload;$('#cancel-launch').hidden=!e.payload.can_cancel;render();});await window.__TAURI__.event.listen('progress',e=>{window.KyroPickers.progress(e.payload.message);if(!state.updateProgress){$('#operation').hidden=true;return;}$('#operation').hidden=false;$('#operation-label').textContent=e.payload.message;const fraction=Number(e.payload.fraction);if(e.payload.fraction!=null&&Number.isFinite(fraction)){const value=Math.max(0,Math.min(1,fraction));$('#operation-progress').value=value;$('#operation-percent').textContent=Math.round(value*100)+'%';}else{$('#operation-progress').removeAttribute('value');$('#operation-percent').textContent='…';}const speed=Number(e.payload.bytes_per_second);$('#operation-speed').hidden=!(Number.isFinite(speed)&&speed>0);$('#operation-speed').textContent='· '+(speed/1048576).toLocaleString('ru-RU',{maximumFractionDigits:1})+' МБ/с';$('#operation').title=e.payload.message;if(e.payload.message==='Minecraft запущен')$('#cancel-launch').hidden=true;});await window.__TAURI__.event.listen('state-changed',async()=>{await sync();render();});await window.__TAURI__.event.listen('close-blocked',()=>toast('Дождитесь завершения игры или установки.'));
   invoke('versions').then(v=>{releaseVersions=v.filter(v=>!/^1\.(?:[0-9]|1[0-2])(?:\.|$)/.test(v));if(page==='play')render();}).catch(e=>toast('Не удалось обновить список версий: '+e));
  }}catch(e){failure(e);render();}
 }

@@ -8,6 +8,7 @@ import java.nio.file.*;
 public final class PanelLayout {
     public static final int INFO_W=226,INFO_H=24,MUSIC_W=272,MUSIC_H=48;
     public double infoX=.02, infoY=.025, musicX=.02, musicY=.83;
+    public double cooldownX=.02,cooldownY=.6;
     public boolean info=true,music=true,cooldowns=true;
     public boolean cooldownNames=true,cooldownMinutes=true;
     public java.util.List<CooldownRule> cooldownRules=new java.util.ArrayList<>();
@@ -36,10 +37,10 @@ public final class PanelLayout {
         return (int)Math.max(0,Math.min(Math.max(0,screen-size),value*screen));
     }
     public void move(int panel,double mx,double my,double dx,double dy,int width,int height) {
-        int w=panel==0?infoWidth():musicWidth(),h=panel==0?infoHeight():musicHeight();
+        int w=panel==2?(int)Math.ceil(AgentCooldowns.WIDTH*cooldownScale()):panel==0?infoWidth():musicWidth(),h=panel==2?(int)Math.ceil(32*cooldownScale()):panel==0?infoHeight():musicHeight();
         double x=Math.max(0,Math.min(width-w,mx-dx))/Math.max(1,width);
         double y=Math.max(0,Math.min(height-h,my-dy))/Math.max(1,height);
-        if(panel==0){infoX=x;infoY=y;}else{musicX=x;musicY=y;}
+        if(panel==0){infoX=x;infoY=y;}else if(panel==1){musicX=x;musicY=y;}else{cooldownX=x;cooldownY=y;}
     }
     public void save(Path file,Gson json)throws IOException {
         Files.createDirectories(file.getParent());
@@ -54,6 +55,7 @@ public final class PanelLayout {
         if(!new com.google.gson.JsonParser().parse(new String(Files.readAllBytes(file),java.nio.charset.StandardCharsets.UTF_8)).getAsJsonObject().has("cooldownSizeRevision"))result.cooldownScale=.7;
         result.infoX=sane(result.infoX);result.infoY=sane(result.infoY);
         result.musicX=sane(result.musicX);result.musicY=sane(result.musicY);
+        result.cooldownX=sane(result.cooldownX);result.cooldownY=sane(result.cooldownY);
         result.musicScale=result.musicScale();
         result.cooldownScale=result.cooldownScale();
         java.util.List<CooldownRule> rules=new java.util.ArrayList<>();if(result.cooldownRules!=null)for(CooldownRule rule:result.cooldownRules)if(rule!=null&&rule.key!=null&&!rule.key.isEmpty()&&rule.key.length()<=4096&&rule.label!=null&&!rule.label.trim().isEmpty()&&rule.label.length()<=256&&Double.isFinite(rule.seconds)&&rule.seconds>0&&rule.seconds<=86400&&rules.size()<24)rules.add(rule);result.cooldownRules=rules;

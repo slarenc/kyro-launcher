@@ -20,6 +20,17 @@ final class AgentGame {
         }catch(Exception ignored){}
     }
     static String string(JsonObject json,String key){return json.has(key)?json.get(key).getAsString():"";}
+    boolean loading(){
+        if(client==null)return true;
+        for(String field:new String[]{"overlay","loadingOverlay","field_18175"})if(GameAccess.field(client,field)!=null)return true;
+        Object screen=null;for(String field:new String[]{"screen","currentScreen","field_1755","field_71462_r"}){screen=GameAccess.field(client,field);if(screen!=null)break;}
+        if(screen==null)return false;
+        for(Class<?> c=screen.getClass();c!=null;c=c.getSuperclass()){
+            String name=GameAccess.canonical(c);
+            if(name.contains("Loading")||name.contains("ProgressScreen")||name.contains("ReceivingLevel")||name.contains("DownloadingTerrain")||name.contains("ConnectScreen")||name.contains("LevelLoad")||name.contains("GuiDownloadTerrain")||name.contains("GuiConnecting")||name.equals("net.minecraft.class_434")||name.equals("net.minecraft.class_435")||name.equals("net.minecraft.class_412"))return true;
+        }
+        return false;
+    }
     boolean hidden(){
         if(client==null)return false;
         try{

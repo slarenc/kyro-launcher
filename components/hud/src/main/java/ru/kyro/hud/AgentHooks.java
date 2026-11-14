@@ -69,6 +69,7 @@ public final class AgentHooks {
             if(preview&&Boolean.getBoolean("kyro.hud.previewHidden")&&!previewHidden){window("glfwHideWindow",new Class<?>[]{long.class},window);previewHidden=true;}
             if(preview&&Boolean.getBoolean("kyro.hud.requireWorld")&&!game.world)return;
             if(!game.world&&!preview){cooldownReader.sample(null);CooldownHooks.reset();cooldownRows=Collections.emptyList();ready=false;if(editor)setEditor(false);return;}
+            if(!preview&&game.loading()){ready=false;if(editor)setEditor(false);return;}
             if(now-cooldownAt>=50_000_000L){cooldownAt=now;cooldownRows=CooldownHooks.merge(game.localPlayer,cooldownReader.sample(game.localPlayer));}
             window("glfwGetFramebufferSize",new Class<?>[]{long.class,IntBuffer.class,IntBuffer.class},window,px,py);window("glfwGetWindowSize",new Class<?>[]{long.class,IntBuffer.class,IntBuffer.class},window,wx,wy);
             pixelWidth=px.get(0);pixelHeight=py.get(0);if(pixelWidth<=0||pixelHeight<=0)return;
@@ -89,7 +90,7 @@ public final class AgentHooks {
             if(seek>=0&&holding==0&&previewUntil!=0&&now>previewUntil){seek=-1;previewUntil=0;}
             if(now-lastPaint>=33_333_333L&&painting.compareAndSet(false,true)){
                 lastPaint=now;final double a=expand,seconds=media.trackSeconds(),previewSeek=seek,ms=musicScale;final boolean h=hot,e=editor,remain=remaining,info=layout.info,music=layout.music,hover=layout.expandOnHover,announce=layout.announceTracks;final String time=clock,latency=ping,frames=fps+" FPS";
-                final boolean cds=layout.cooldowns,names=layout.cooldownNames,minutes=layout.cooldownMinutes;final java.util.List<AgentCooldowns.Entry> rows=cooldownRows;
+                final boolean cds=layout.cooldowns,names=layout.cooldownNames,minutes=layout.cooldownMinutes;final java.util.List<AgentCooldowns.Entry> rows=editor&&cooldownRows.isEmpty()?Collections.singletonList(new AgentCooldowns.Entry("preview","КД предметов",100,200)):cooldownRows;
                 painter.execute(()->{try{PanelPainter.refreshAppearance();pending=new Frame(info?PanelPainter.info(time,frames,latency,now/1e9,false):null,music?PanelPainter.music(track,a,h,seconds,previewSeek,remain):null,e?editorImage(info,music,hover,announce,ms):null,cds?PanelPainter.cooldowns(rows,names,minutes):null);}catch(Throwable error){log("Panel painting failed",error);}finally{painting.set(false);}});
             }
             Frame update=pending;boolean dirty=update!=null;if(dirty){shown=update;pending=null;}if(shown==null)return;
@@ -98,8 +99,8 @@ public final class AgentHooks {
             try{
                 if(layout.info)gl.draw(0,shown.info,dirty,x(layout.infoX,layout.infoWidth())*scale,y(layout.infoY,layout.infoHeight())*scale,(float)(226*layout.infoScale()*scale),(float)(24*layout.infoScale()*scale));
                 if(layout.music)gl.draw(1,shown.music,dirty,(float)musicX*scale,(float)musicY*scale,(float)(272*musicScale*scale),(float)(116*musicScale*scale));
-                if(!editor&&layout.cooldowns&&shown.cooldowns!=null&&!cooldownRows.isEmpty()){double cs=layout.cooldownScale();gl.draw(3,shown.cooldowns,dirty,(float)((guiWidth-AgentCooldowns.WIDTH*cs)/2*scale),(guiHeight/2f+22)*scale,(float)(AgentCooldowns.WIDTH*cs*scale),(float)(shown.cooldowns.getHeight()/2f*cs*scale));}
-                if(editor)gl.draw(2,shown.editor,dirty,(guiWidth-320)/2f*scale,editorY()*scale,320*scale,shown.editor==null?editorHeight()*scale:shown.editor.getHeight()/2f*scale);
+                if(layout.cooldowns&&shown.cooldowns!=null&&(editor||!cooldownRows.isEmpty())){double cs=layout.cooldownScale();gl.draw(3,shown.cooldowns,dirty,x(layout.cooldownX,(int)Math.ceil(AgentCooldowns.WIDTH*cs))*scale,y(layout.cooldownY,(int)Math.ceil(shown.cooldowns.getHeight()/2f*cs))*scale,(float)(AgentCooldowns.WIDTH*cs*scale),(float)(shown.cooldowns.getHeight()/2f*cs*scale));}
+                if(editor&&dragging<0)gl.draw(2,shown.editor,dirty,(guiWidth-320)/2f*scale,editorY()*scale,320*scale,shown.editor==null?editorHeight()*scale:shown.editor.getHeight()/2f*scale);
                 if(preview){double elapsed=(now-previewStart)/1e9;if(captures==0&&elapsed>4||captures==1&&elapsed>9||captures==2&&elapsed>13){capture(captures++);}if(elapsed>15)window("glfwSetWindowShouldClose",new Class<?>[]{long.class,boolean.class},window,true);}
             }finally{gl.end();}
         }catch(Throwable error){failed=true;media.close();log("Overlay disabled after a rendering error",error);}
@@ -204,8 +205,9 @@ public final class AgentHooks {
             else if(inside(xx,yy,164,164,144,24)){CooldownMenu.open=true;CooldownMenu.fresh();}
             else if(inside(xx,yy,234,192,28,24))layout.cooldownScale=Math.max(.2,Math.round((layout.cooldownScale()-.05)*20)/20.0);else if(inside(xx,yy,272,192,28,24))layout.cooldownScale=Math.min(1.5,Math.round((layout.cooldownScale()+.05)*20)/20.0);
             else if(inside(xx,yy,12,220,144,24))layout.customSky=!layout.customSky;else if(inside(xx,yy,164,220,144,24))skyEditor=true;
-            else if(inside(xx,yy,12,248,164,22)){layout.infoX=.02;layout.infoY=.025;layout.musicX=.02;layout.musicY=.83;}else if(inside(xx,yy,240,248,70,22))setEditor(false);save();return true;
+            else if(inside(xx,yy,12,248,164,22)){layout.infoX=.02;layout.infoY=.025;layout.musicX=.02;layout.musicY=.83;layout.cooldownX=.02;layout.cooldownY=.6;}else if(inside(xx,yy,240,248,70,22))setEditor(false);save();return true;
         }}
+        if(editor&&layout.cooldowns&&shown!=null&&shown.cooldowns!=null){int w=(int)Math.ceil(AgentCooldowns.WIDTH*layout.cooldownScale()),h=(int)Math.ceil(shown.cooldowns.getHeight()/2f*layout.cooldownScale());int cx=x(layout.cooldownX,w),cy=y(layout.cooldownY,h);if(inside(mx,my,cx,cy,w,h)){dragging=2;dragX=mx-cx;dragY=my-cy;return true;}}
         if(layout.music&&inside(mx,my,musicX,musicY,272*layout.musicScale(),musicHeight)){
             double xx=(mx-musicX)/layout.musicScale(),yy=(my-musicY)/layout.musicScale();PanelPainter.Track t=media.snapshot();controlKey=t.source+"\0"+t.title+"\0"+t.artist;
             double playX=PanelPainter.lerp(208,122,expand),playY=PanelPainter.lerp(10,79,expand),wingY=PanelPainter.lerp(14,83,expand);
