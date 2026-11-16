@@ -1,5 +1,5 @@
 'use strict';
-const CURRENT_LAUNCHER_VERSION = '0.8.6';
+const CURRENT_LAUNCHER_VERSION = '0.8.7';
 const $ = (q, root = document) => root.querySelector(q);
 const $$ = (q, root = document) => [...root.querySelectorAll(q)];
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -57,6 +57,7 @@ function navigate(next){page=next;updateChrome();render();window.KyroAssist.ente
 function heading(title,subtitle='',right=''){return `<div class="page-heading"><div><h1>${title}</h1>${subtitle?`<p>${subtitle}</p>`:''}</div>${right}</div>`;}
 function empty(title,text,ico='box'){return `<div class="empty">${icon(ico)}<strong>${title}</strong>${text}</div>`;}
 function render(){
+ document.getElementById('activity-tooltip')?.remove();
  const focused=document.activeElement?.id==='search-query',caret=focused?document.activeElement.selectionStart:null;
  $('#page').innerHTML=(!native?'<div class="preview-banner">Предпросмотр интерфейса · запустите EXE для доступа к Rust, Minecraft и Modrinth.</div>':'')+({play:home,catalog:catalog,activity:activity,notifications:notifications,settings:settings,screenshots:window.KyroAssist.screenshots,diagnostics:window.KyroAssist.diagnostics}[page])();
  bind();
@@ -95,7 +96,7 @@ function activity(){
   const d=new Date(start);d.setDate(start.getDate()+i);const k=dateKey(d), entry=byDay.get(k)||{seconds:0,count:0};
   const level=entry.seconds>=10800?4:entry.seconds>=5400?3:entry.seconds>=1800?2:entry.seconds>0?1:0;
   const title=`${d.toLocaleDateString('ru-RU',{day:'numeric',month:'long',year:'numeric'})} · ${duration(entry.seconds)} · сессий: ${entry.count}`;
-  cells.push(`<span tabindex="0" class="cell ${d>today?'future':''}" data-level="${level}" title="${esc(title)}" aria-label="${esc(title)}"></span>`);
+  cells.push(`<span tabindex="0" class="cell ${d>today?'future':''}" data-level="${level}" data-activity-date="${esc(d.toLocaleDateString('ru-RU',{day:'numeric',month:'long',year:'numeric'}))}" data-activity-time="${esc(duration(entry.seconds))}" data-activity-count="${entry.count}" aria-label="${esc(title)}"></span>`);
  }
  const versionMap=new Map();sessions.forEach(x=>{const k=`${x.version} ${x.loader}`;versionMap.set(k,(versionMap.get(k)||0)+x.seconds);});
  const versions=[...versionMap].sort((a,b)=>b[1]-a[1]);

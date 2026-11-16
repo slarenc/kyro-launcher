@@ -36,3 +36,5 @@
 !/tools/servers-catalog-smoke.cjs
 
 !/tools/ui-refinement-smoke.cjs
+
+!/tools/controls-qa.cjs
