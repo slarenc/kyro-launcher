@@ -12,6 +12,8 @@ pub struct FavoriteServer {
     pub id: String,
     pub name: String,
     pub address: String,
+    #[serde(default)]
+    pub icon: String,
 }
 pub fn address(raw: &str) -> Result<(String, u16), String> {
     let raw = raw.trim();
@@ -121,7 +123,8 @@ fn plain(v: &Value) -> String {
 }
 async fn status(host: &str, port: u16) -> Result<Value, String> {
     let start = Instant::now();
-    let mut stream = TcpStream::connect((host, port))
+    let endpoint = srv_endpoint(host, port).await;
+    let mut stream = TcpStream::connect((endpoint.0.as_str(), endpoint.1))
         .await
         .map_err(|e| e.to_string())?;
     let mut hello = vec![0];
@@ -164,8 +167,26 @@ async fn status(host: &str, port: u16) -> Result<Value, String> {
         })
         .collect();
     Ok(
-        json!({"online":true,"icon":data["favicon"].as_str().filter(|s| s.len() < 32768 && s.starts_with("data:image/png;base64,")),"latency":latency,"players":data["players"]["online"].as_u64(),"max":data["players"]["max"].as_u64(),"version":data["version"]["name"].as_str().unwrap_or(""),"description":description}),
+        json!({"online":true,"icon":data["favicon"].as_str().map(|s| s.chars().filter(|c|!c.is_whitespace()).collect::<String>()).filter(|s| s.len() < 512*1024 && s.starts_with("data:image/png;base64,")),"latency":latency,"players":data["players"]["online"].as_u64(),"max":data["players"]["max"].as_u64(),"version":data["version"]["name"].as_str().unwrap_or(""),"description":description}),
     )
+}
+
+// Minecraft domains may point at an SRV endpoint instead of an A record.
+async fn srv_endpoint(host: &str, port: u16) -> (String, u16) {
+    #[cfg(windows)]
+    if port == 25565 && host.parse::<std::net::IpAddr>().is_err() {
+        let mut command = tokio::process::Command::new("powershell.exe");
+        command.args(["-NoProfile", "-NonInteractive", "-Command", "$ErrorActionPreference='Stop'; Resolve-DnsName -Name $env:KYRO_SRV_QUERY -Type SRV -DnsOnly | Where-Object Type -eq SRV | Sort-Object Priority | Select-Object -First 1 NameTarget,Port | ConvertTo-Json -Compress"])
+            .env("KYRO_SRV_QUERY",format!("_minecraft._tcp.{host}")).creation_flags(0x08000000).kill_on_drop(true);
+        if let Ok(Ok(output)) = tokio::time::timeout(Duration::from_secs(2),command.output()).await {
+            if let Ok(value) = serde_json::from_slice::<Value>(&output.stdout) {
+                if let (Some(target),Some(port))=(value["NameTarget"].as_str(),value["Port"].as_u64().filter(|n|*n>0&&*n<=65535)) {
+                    return (target.trim_end_matches('.').into(),port as u16);
+                }
+            }
+        }
+    }
+    (host.into(),port)
 }
 
 pub async fn server_status(state: &State, id: String) -> Result<Value, String> {
@@ -212,11 +233,18 @@ pub fn save_server(state: &State, name: String, address: String) -> Result<(), S
             return Err("Можно сохранить до 3 серверов".into());
         }
         data.servers.push(FavoriteServer {
+            icon: String::new(),
             id: chrono::Utc::now().timestamp_micros().to_string(),
             name: name.into(),
             address: normalized,
         });
     }
+    state.save()
+}
+
+pub fn set_icon(state: &State, id: String, image: String) -> Result<(), String> {
+    crate::customization::validate_image(&image)?;
+    state.data.lock().map_err(|e|e.to_string())?.servers.iter_mut().find(|s|s.id==id).ok_or("Сервер не найден")?.icon=image;
     state.save()
 }
 
@@ -271,6 +299,17 @@ pub fn connect_args(version: &str, raw: &str) -> Result<Vec<String>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test]
+    #[ignore = "requires live Minecraft servers"]
+    async fn live_server_icons() {
+        let mut values = serde_json::Map::new();
+        for host in ["mc.aresmine.ru", "jux.virtusmine.fun"] {
+            let value = tokio::time::timeout(Duration::from_secs(10),status(host,25565)).await;
+            match value { Ok(Ok(v)) => { println!("{host}: online={}, icon={}",v["online"],v["icon"].as_str().is_some()); values.insert(host.into(),v); }, _=>println!("{host}: no response") }
+        }
+        std::fs::create_dir_all("../output/ui-refinement").unwrap();
+        std::fs::write("../output/ui-refinement/live-servers.json",serde_json::to_vec(&values).unwrap()).unwrap();
+    }
     #[test]
     fn limits_favorites_to_three_and_frees_removed_slot() {
         let root = std::env::temp_dir().join(format!("kyro-servers-{}", chrono::Utc::now().timestamp_nanos_opt().unwrap()));

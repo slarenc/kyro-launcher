@@ -43,7 +43,7 @@ const fs = require('fs');
     if(name==='diagnose_launch')return {title:'Найдены признаки причины вылета',ok:false,record:{error:'OutOfMemoryError'},findings:[{title:'Не хватило памяти',detail:'Java сообщила об ошибке выделения памяти.',action:'java'}],evidence:['java.lang.OutOfMemoryError: Java heap space'],note:'Локальная диагностика'};
     if(name==='apply_graphics_preset'){window.__appliedPreset=args.id;return {id:args.id};}
     if(name==='restore_graphics_preset'){window.__appliedPreset=null;return;}
-    if(name==='scan_mods')return {files:structuredClone(mods),warning:''};
+    if(name==='scan_mods')return {files:settings.instance_id?[]:structuredClone(mods),warning:''};
     if(name==='toggle_mod'){const m=mods.find(m=>m.filename===args.filename);m.enabled=args.enabled;m.filename=m.enabled?'sodium.jar':'sodium.jar.disabled';return;}
     if(name==='update_mod'){mods[0].update=null;mods[0].version_number='1.1';return;}
     if(name==='install_java'){settings.java_path='C:/Kyro/data/runtimes/java-21/bin/java.exe';return settings.java_path;}
@@ -68,8 +68,8 @@ const fs = require('fs');
  await page.locator('#mod-updates-card strong').getByText('Доступно 1 обновление',{exact:true}).waitFor();
  if(await page.locator('#profile-button').evaluate(e=>parseFloat(getComputedStyle(e).borderTopLeftRadius))<10)throw new Error('Account card must have rounded corners');
  await page.locator('#mod-updates-card').click();
- await page.getByRole('heading',{name:'Мои моды',exact:true}).waitFor();
- await page.getByRole('button',{name:'Обновить · 1.1',exact:true}).waitFor();
+ await page.getByRole('heading',{name:'Твой игровой профиль',exact:true}).waitFor();
+ await page.getByRole('button',{name:'↻ Обновить',exact:true}).waitFor();
  await page.locator('[data-kind="mod"]').click();
  await page.locator('[data-page="play"]').click();
  if(await page.locator('#game-loader-trigger').evaluate(e=>getComputedStyle(e).fontStyle)!=='normal')throw new Error('Fabric must be upright');
@@ -168,6 +168,7 @@ const fs = require('fs');
  await page.waitForFunction(()=>window.__kyroLastSearch.version==='1.21.1');
  await page.getByRole('button',{name:'Установить',exact:true}).click();
  await page.locator('[data-kind="installed"]').click();
+ await page.locator('.mod-details summary').first().click();
  await page.getByText('sodium.jar',{exact:true}).waitFor();
  await page.locator('[data-page="activity"]').click();
  if(await page.locator('.heatmap .cell').count()!==371)throw new Error('Calendar must have 53 x 7 cells');
@@ -186,23 +187,24 @@ const fs = require('fs');
  await page.locator('#play').click();
  await page.waitForFunction(()=>window.__launchedPack==='pack-v1');
  await page.locator('[data-page="catalog"]').click();
- await page.getByRole('button',{name:'Запустить',exact:true}).waitFor();
+ await page.locator('[data-launch-pack]').waitFor();
  await page.locator('[data-kind="installed"]').click();
- await page.getByRole('button',{name:'Запустить',exact:true}).waitFor();
+ await page.locator('[data-launch-pack]').waitFor();
  if(await page.getByText('sodium.jar',{exact:true}).count())throw new Error('Ordinary profile mods leaked into pack');
- await page.getByRole('button',{name:'Запустить',exact:true}).click();
+ await page.locator('[data-launch-pack]').click();
  await page.locator('#active-modpack-trigger').waitFor();
  await page.screenshot({path:'output/app-preview/13-modpack-home.png'});
  await page.locator('#active-modpack').selectOption('',{force:true});
  await page.waitForFunction(()=>!document.querySelector('#game-loader-trigger').disabled);
  await page.locator('[data-page="catalog"]').click();
- await page.locator('[data-kind="manage"]').click();
+ await page.locator('[data-kind="installed"]').click();
  await page.getByRole('checkbox',{name:'Включить Sodium'}).waitFor();
  await page.getByRole('checkbox',{name:'Включить Sodium'}).uncheck();
+ await page.locator('.mod-details summary').first().click();
  await page.getByText('sodium.jar.disabled',{exact:true}).waitFor();
  await page.getByRole('checkbox',{name:'Включить Sodium'}).check();
  await page.locator('#refresh-mods').click();
- await page.getByRole('button',{name:'Обновить · 1.1',exact:true}).click();
+ await page.getByRole('button',{name:'↻ Обновить',exact:true}).click();
  await page.waitForFunction(()=>!document.querySelector('[data-update-mod]'));
  await page.getByText('Обновлений нет',{exact:true}).waitFor();
  await page.screenshot({path:'output/app-preview/14-mod-manager.png'});

@@ -34,3 +34,5 @@
 !/tools/accounts-launcher-smoke.cjs
 !/tools/server-preview.cjs
 !/tools/servers-catalog-smoke.cjs
+
+!/tools/ui-refinement-smoke.cjs

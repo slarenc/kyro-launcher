@@ -1,5 +1,5 @@
 'use strict';
-const CURRENT_LAUNCHER_VERSION = '0.8.5';
+const CURRENT_LAUNCHER_VERSION = '0.8.6';
 const $ = (q, root = document) => root.querySelector(q);
 const $$ = (q, root = document) => [...root.querySelectorAll(q)];
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -21,6 +21,7 @@ const native = !!window.__TAURI__;
 const defaults = {auto_java:true,home_layout:'orbit',home_background:'',username:'Nova',version:'1.21.11',loader:'Fabric',memory_gb:6,java_path:'java',jvm_args:'-XX:+UseG1GC -XX:MaxGCPauseMillis=50',download_threads:8,launch_behavior:'hide',language:'ru',theme:'black',accent:'#a185cf',mod_notifications:true,system_notifications:true,curseforge_api_key:'',microsoft_client_id:''};
 let state = {data:{settings:{...defaults},sessions:[],notices:[],installed:[]},account:null,busy:false};
 let page = 'play', settingsTab = 'general', catalogKind = 'mod', catalogOffset = 0, catalogQuery = '', catalogData = null, catalogError = '', catalogLoading = false, catalogSeq = 0;
+let catalogTimer;
 let noticeFilter='all', year=new Date().getFullYear(), releaseVersions=['1.21.11'], toastTimer, saveTimer, loginTimer, refreshTimer;
 const invoke = (command,args={}) => native ? window.__TAURI__.core.invoke(command,args) : Promise.reject(new Error('Откройте приложение KYRO. В браузере доступен только предпросмотр интерфейса.'));
 function toast(message){ $('#toast').textContent=String(message);$('#toast').hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('#toast').hidden=true,7000); }
@@ -56,12 +57,17 @@ function navigate(next){page=next;updateChrome();render();window.KyroAssist.ente
 function heading(title,subtitle='',right=''){return `<div class="page-heading"><div><h1>${title}</h1>${subtitle?`<p>${subtitle}</p>`:''}</div>${right}</div>`;}
 function empty(title,text,ico='box'){return `<div class="empty">${icon(ico)}<strong>${title}</strong>${text}</div>`;}
 function render(){
+ const focused=document.activeElement?.id==='search-query',caret=focused?document.activeElement.selectionStart:null;
  $('#page').innerHTML=(!native?'<div class="preview-banner">Предпросмотр интерфейса · запустите EXE для доступа к Rust, Minecraft и Modrinth.</div>':'')+({play:home,catalog:catalog,activity:activity,notifications:notifications,settings:settings,screenshots:window.KyroAssist.screenshots,diagnostics:window.KyroAssist.diagnostics}[page])();
  bind();
  window.KyroFeatures.bind();
  window.KyroServers.bind();
  window.KyroAssist.bind();
  window.KyroPickers.enhance($('#page'));
+ document.querySelectorAll('#page button').forEach(button=>{const text=button.textContent.trim();if(!button.querySelector('svg')&&['Открыть папку','Выбрать профиль','Обновить','Лог этого профиля','Папка диагностики','Сбросить к рекомендуемым'].includes(text)){button.classList.add('soft-action');button.insertAdjacentHTML('afterbegin',icon(text.includes('папк')||text.includes('Папка')?'folder':text==='Обновить'?'refresh':text.includes('Лог')?'box':'arrow'));}});
+ document.querySelectorAll('input[type=range]').forEach(el=>{const paint=()=>el.style.setProperty('--range-fill',((Number(el.value)-Number(el.min||0))/(Number(el.max||100)-Number(el.min||0))*100)+'%');el.addEventListener('input',paint);paint();});
+ document.querySelectorAll('form,input').forEach(el=>el.setAttribute('autocomplete','off'));
+ if(focused&&$('#search-query')){$('#search-query').focus();$('#search-query').setSelectionRange(caret,caret);}
 }
 function packSelector(){const packs=state.data.modpacks||[];return packs.length?`<label class="pack-selector">Игровой профиль<select id="active-modpack" aria-label="Игровой профиль" ${state.busy?'disabled':''}><option value="">Обычный профиль</option>${packs.map(p=>`<option value="${esc(p.id)}" ${p.id===s().instance_id?'selected':''}>${esc(p.name)} · ${esc(p.version_name)}</option>`).join('')}</select></label>`:'';}
 function updateLauncherBackground(){
@@ -97,11 +103,11 @@ function activity(){
 }
 function catalog(){
  if(catalogKind==='compatibility')return window.KyroAssist.compatibility();
- if(catalogKind==='manage')return heading('Каталог','Управление модами текущего профиля')+`<div class="tabs"><button data-kind="mod">Каталог модов</button><button class="selected" data-kind="manage">Мои моды</button><button data-kind="installed">Установленные</button></div>`+'<button id="compat-open">Проверить совместимость</button>'+window.KyroFeatures.manager();
- const categories=[['modpack','Сборки'],['mod','Моды'],['shader','Шейдеры'],['resourcepack','Ресурспаки'],['manage','Мои моды'],['installed','Установленные']];
+ if(catalogKind==='manage')catalogKind='installed';
+ const categories=[['modpack','Сборки'],['mod','Моды'],['shader','Шейдеры'],['resourcepack','Ресурспаки'],['installed','Установленные']];
  const data=catalogData, installed=catalogKind==='installed';
  let content='';
- if(installed){const packs=(state.data.modpacks||[]).map(p=>`<div class="mod-row"><div class="mod-icon">${icon('box')}</div><div class="mod-info"><strong>${esc(p.name)}</strong><p>${esc(p.version_name)} · Minecraft ${esc(p.game_version)} · ${esc(p.loader)} ${esc(p.loader_version)}</p><small>Отдельный профиль сборки</small></div><button data-launch-pack="${esc(p.id)}" ${state.busy?'disabled':''}>Запустить</button></div>`).join('');const items=state.data.installed.filter(x=>x.game_version===s().version&&x.loader===s().loader&&(x.instance_id||'')===(s().instance_id||''));content=packs+(items.length?items.map(x=>`<div class="mod-row"><div class="mod-icon">${icon('box')}</div><div class="mod-info"><strong>${esc(x.name)}</strong><p>${esc(x.filename)}</p><small>${esc(x.game_version)} · ${esc(x.loader)}</small></div><span class="badge">Установлено</span>${x.kind==='mod'?`<button class="remove-mod" data-remove-mod="${esc(x.filename)}" aria-label="Удалить ${esc(x.name)}" title="Удалить мод" ${state.busy?'disabled':''}>${icon('trash')}</button>`:''}</div>`).join(''):packs?'':empty('Профиль пока пуст','Установи моды из каталога. Каждый профиль хранит свои файлы отдельно.'));}
+ if(installed)content=window.KyroFeatures.manager();
  else if(catalogLoading)content=empty('Ищем проекты…','Загрузка совместимых проектов.','search');
  else if(catalogError)content=empty('Не удалось загрузить каталог',esc(catalogError))+'<button id="retry-catalog">Повторить</button>';
  else if(data?.hits?.length)content=data.hits.map((m,index)=>{
@@ -110,10 +116,10 @@ function catalog(){
  const image=typeof m.icon_url==='string'&&['https://cdn.modrinth.com/','https://media.forgecdn.net/','https://mediafilez.forgecdn.net/'].some(prefix=>m.icon_url.startsWith(prefix))?`<img class="mod-icon" src="${esc(m.icon_url)}" alt="" loading="lazy" referrerpolicy="no-referrer">`:`<div class="mod-icon">${icon('box')}</div>`;
  return `<div class="mod-row">${image}<div class="mod-info"><strong>${esc(m.title)}</strong><p>${esc(m.description)}</p><small>${esc(m.author)} · ${new Intl.NumberFormat('ru',{notation:'compact'}).format(m.downloads)} загрузок · ${esc(s().version)}</small></div><button ${pack?`data-launch-pack="${esc(pack.id)}"`:`data-install="${index}"`} ${state.busy||installed?'disabled':''}>${pack?'Запустить':installed?'Установлено':'Установить'}</button></div>`;
  }).join('');else content=empty('Ничего не найдено','Попробуй другой запрос или версию Minecraft.','search');
- return heading('Каталог','Проекты для твоего Minecraft')+`<div class="tabs">${categories.map(([k,t])=>`<button data-kind="${k}" class="${catalogKind===k?'selected':''}">${t}</button>`).join('')}</div>${!installed?`<form class="searchbox" id="catalog-search">${icon('search')}<input id="search-query" placeholder="Найти в каталоге" value="${esc(catalogQuery)}" aria-label="Поиск в каталоге"><button type="submit" class="text-button">НАЙТИ</button></form>`:''}<div class="filters"><select id="catalog-version" aria-label="Версия Minecraft в каталоге">${[...new Set([s().version,...releaseVersions])].map(v=>`<option value="${esc(v)}" ${v===s().version?'selected':''}>Minecraft ${esc(v)}</option>`).join('')}</select><select id="catalog-loader" aria-label="Загрузчик в каталоге">${['Vanilla','Fabric','Quilt','Forge','NeoForge'].map(l=>`<option ${l===s().loader?'selected':''}>${l}</option>`).join('')}</select><span class="result-count">${!installed&&data?`${data.total_hits.toLocaleString('ru')} проектов`:''}</span></div>${catalogKind==='modpack'?'<p class="help">Сборки устанавливаются в отдельные профили. Клиентские необязательные файлы включены; серверные исключены. Поддерживаются Fabric, Quilt, Forge, NeoForge и Vanilla.</p>':''}${!installed&&data?.warning?`<p class="help" role="status">${esc(data.warning)}</p>`:''}<div id="catalog-results">${content}</div>${!installed&&data?`<div class="pagination"><button id="previous-page" ${catalogOffset===0||catalogLoading?'disabled':''}>←</button><span>${Math.floor(catalogOffset/12)+1} / ${data.page_count}</span><button id="next-page" ${Math.floor(catalogOffset/12)+1>=data.page_count||catalogLoading?'disabled':''}>→</button></div>`:''}`;
+ return heading('Каталог','Проекты для твоего Minecraft')+`<div class="tabs">${categories.map(([k,t])=>`<button data-kind="${k}" class="${catalogKind===k?'selected':''}">${t}</button>`).join('')}</div>${!installed?`<form class="searchbox" id="catalog-search">${icon('search')}<input id="search-query" autocomplete="off" autocorrect="off" spellcheck="false" placeholder="Найти в каталоге" value="${esc(catalogQuery)}" aria-label="Поиск в каталоге"><span class="search-hint">Поиск при вводе</span></form>`:''}<div class="filters"><select id="catalog-version" aria-label="Версия Minecraft в каталоге">${[...new Set([s().version,...releaseVersions])].map(v=>`<option value="${esc(v)}" ${v===s().version?'selected':''}>Minecraft ${esc(v)}</option>`).join('')}</select><select id="catalog-loader" aria-label="Загрузчик в каталоге">${['Vanilla','Fabric','Quilt','Forge','NeoForge'].map(l=>`<option ${l===s().loader?'selected':''}>${l}</option>`).join('')}</select><span class="result-count">${!installed&&data?`${data.total_hits.toLocaleString('ru')} проектов`:''}</span></div>${catalogKind==='modpack'?'<p class="help">Сборки устанавливаются в отдельные профили. Клиентские необязательные файлы включены; серверные исключены. Поддерживаются Fabric, Quilt, Forge, NeoForge и Vanilla.</p>':''}${!installed&&data?.warning?`<p class="help" role="status">${esc(data.warning)}</p>`:''}<div id="catalog-results">${content}</div>${!installed&&data?`<div class="pagination"><button id="previous-page" ${catalogOffset===0||catalogLoading?'disabled':''}>←</button><span>${Math.floor(catalogOffset/12)+1} / ${data.page_count}</span><button id="next-page" ${Math.floor(catalogOffset/12)+1>=data.page_count||catalogLoading?'disabled':''}>→</button></div>`:''}`;
 }
 async function loadCatalog(){
- if(catalogKind==='installed')return;
+ if(catalogKind==='installed'){await window.KyroFeatures.scan(false);return;}
  if(catalogKind==='compatibility'){await window.KyroAssist.load('compatibility');return;}
  if(catalogKind==='manage'){await window.KyroFeatures.scan(false);return;}
  const seq=++catalogSeq;catalogLoading=true;catalogError='';render();
@@ -167,7 +173,8 @@ function bind(){
  if($('#fps-boost'))$('#fps-boost').onclick=openFpsBoost;
  if($('#play'))$('#play').onclick=()=>state.launch?.can_cancel?$('#cancel-launch').click():runOperation('Подготовка Minecraft…',async()=>{if(!await persist())return false;if(!await window.KyroAssist.confirmCompatibility())return false;await invoke('launch_game');},true);
  if($('#activity-year'))$('#activity-year').onchange=e=>{year=Number(e.target.value);render();};
- $$('[data-kind]').forEach(b=>b.onclick=()=>{catalogKind=b.dataset.kind;catalogOffset=0;catalogData=null;catalogSeq++;catalogLoading=false;render();if(catalogKind!=='installed')loadCatalog();});
+ $$('[data-kind]').forEach(b=>b.onclick=()=>{catalogKind=b.dataset.kind;catalogOffset=0;catalogData=null;catalogSeq++;catalogLoading=false;render();loadCatalog();});
+ if($('#search-query'))$('#search-query').oninput=e=>{catalogQuery=e.target.value;catalogOffset=0;catalogSeq++;clearTimeout(catalogTimer);catalogTimer=setTimeout(()=>{if(page==='catalog'&&!['installed','compatibility'].includes(catalogKind))loadCatalog();},300);};
  if($('#catalog-search'))$('#catalog-search').onsubmit=e=>{e.preventDefault();catalogQuery=$('#search-query').value.trim();catalogOffset=0;loadCatalog();};
  if($('#retry-catalog'))$('#retry-catalog').onclick=loadCatalog;
  if($('#catalog-profile'))$('#catalog-profile').onclick=()=>navigate('play');
@@ -234,8 +241,8 @@ async function boot(){
 }
 window.KyroServers.configure({state:()=>state,invoke,native,render,sync,toast,error:failure,run:runOperation});
 window.KyroPickers.configure({current:()=>({...s(),busy:state.busy}),releases:()=>releaseVersions,load:()=>invoke('version_library'),prepare:()=>runOperation('Подготовка версии…',()=>invoke('verify_files')),select:async(version,loader)=>{if(state.busy)throw new Error('Дождитесь завершения текущей операции');s().instance_id='';s().loader_version='';s().version=version;s().loader=loader;if(!await persist())throw new Error('Не удалось сохранить выбор');await sync();catalogData=null;catalogOffset=0;render();if(page==='catalog')loadCatalog();}});
-window.KyroFeatures.configure({state:()=>state,invoke,persist,render,error:failure,run:runOperation,changed:async()=>{await sync();render();},openMods:()=>{catalogKind='manage';catalogData=null;navigate('catalog');}});
-window.KyroAssist.configure({state:()=>state,invoke,render,error:failure,run:runOperation,navigate,changed:async()=>{await sync();render();},openJava:()=>{settingsTab='java';navigate('settings');},openMods:()=>{catalogKind='manage';catalogData=null;navigate('catalog');},openCompatibility:()=>{catalogKind='compatibility';catalogData=null;navigate('catalog');}});
+window.KyroFeatures.configure({state:()=>state,invoke,persist,render,error:failure,run:runOperation,changed:async()=>{await sync();render();},openMods:()=>{catalogKind='installed';catalogData=null;navigate('catalog');}});
+window.KyroAssist.configure({state:()=>state,invoke,render,error:failure,run:runOperation,navigate,changed:async()=>{await sync();render();},openJava:()=>{settingsTab='java';navigate('settings');},openMods:()=>{catalogKind='installed';catalogData=null;navigate('catalog');},openCompatibility:()=>{catalogKind='compatibility';catalogData=null;navigate('catalog');}});
 boot();
 
 let fpsRequest=0;

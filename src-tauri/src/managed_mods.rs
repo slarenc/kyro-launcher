@@ -55,10 +55,44 @@ fn local_files(dir: &Path) -> Result<Vec<Value>, String> {
         }
         safe_segment_relaxed(&filename)?;
         let bytes = fs::read(entry.path()).map_err(|e| e.to_string())?;
-        files.push(json!({"filename":filename,"name":local_name(&entry.path()),"enabled":!filename.ends_with(".disabled"),"hash":format!("{:x}",Sha1::digest(&bytes)),"size":bytes.len(),"dependencies":[],"update":null}));
+        let (name, version, icon) = local_details(&bytes, &local_name(&entry.path()));
+        files.push(json!({"filename":filename,"name":name,"version_number":version,"icon_url":icon,"enabled":!filename.ends_with(".disabled"),"hash":format!("{:x}",Sha1::digest(&bytes)),"size":bytes.len(),"dependencies":[],"update":null}));
     }
     files.sort_by_key(|v| v["name"].as_str().unwrap_or("").to_lowercase());
     Ok(files)
+}
+fn local_details(bytes: &[u8], fallback: &str) -> (String, String, String) {
+    use std::io::Read;
+    use base64::Engine;
+    let mut name = fallback.split(|c: char| c.is_ascii_digit()).next().unwrap_or(fallback).trim_end_matches(['-', '_', '.', '+']).replace(['-', '_'], " ");
+    if name.is_empty() { name = fallback.into(); }
+    let mut version = String::new();
+    let mut icon_path = String::new();
+    let Ok(mut archive) = zip::ZipArchive::new(std::io::Cursor::new(bytes)) else { return (name, version, String::new()); };
+    for path in ["fabric.mod.json", "quilt.mod.json", "META-INF/neoforge.mods.toml", "META-INF/mods.toml"] {
+        let Ok(mut file) = archive.by_name(path) else { continue; };
+        if file.size() > 1024 * 1024 { continue; }
+        let mut text = String::new(); if file.read_to_string(&mut text).is_err() { continue; }
+        let data = if path.ends_with(".json") { serde_json::from_str::<Value>(&text).ok() }
+            else { toml::from_str::<toml::Value>(&text).ok().and_then(|v| serde_json::to_value(v).ok()) };
+        if let Some(data) = data {
+            let meta = if path == "quilt.mod.json" { &data["quilt_loader"] } else if path.ends_with(".toml") { &data["mods"][0] } else { &data };
+            name = meta["name"].as_str().or(meta["metadata"]["name"].as_str()).or(meta["displayName"].as_str()).unwrap_or(&name).into();
+            version = meta["version"].as_str().filter(|s| !s.contains("${")).unwrap_or("").into();
+            let icon = meta.get("icon").or_else(||meta["metadata"].get("icon")).or_else(||meta.get("logoFile"));
+            if let Some(icon) = icon { icon_path = icon.as_str().or_else(|| icon.as_object().and_then(|v|v.values().find_map(Value::as_str))).unwrap_or("").into(); }
+            break;
+        }
+    }
+    if icon_path.is_empty() { icon_path = "icon.png".into(); }
+    let icon = (|| -> Option<String> {
+        let mut file = archive.by_name(&icon_path).ok()?; if file.size() > 512 * 1024 { return None; }
+        let mut bytes = Vec::new(); file.read_to_end(&mut bytes).ok()?;
+        let image = image::load_from_memory(&bytes).ok()?.thumbnail(96,96);
+        let mut output = std::io::Cursor::new(Vec::new()); image.write_to(&mut output,image::ImageFormat::Png).ok()?;
+        Some(format!("data:image/png;base64,{}",base64::engine::general_purpose::STANDARD.encode(output.into_inner())))
+    })().unwrap_or_default();
+    (name, version, icon)
 }
 fn safe_segment_relaxed(name: &str) -> Result<(), String> {
     if name.is_empty()
@@ -88,10 +122,23 @@ pub async fn scan_mods(state: &State, refresh: bool) -> Result<Value, String> {
         .settings
         .clone();
     let mut files = local_files(&state.instance_dir(&settings)?.join("mods"))?;
+    {
+        let data=state.data.lock().map_err(|e|e.to_string())?;
+        for file in &mut files {
+            if let Some(item)=data.installed.iter().find(|item| item.kind=="mod" && item.instance_id==settings.instance_id && item.game_version==settings.version && item.loader==settings.loader && Some(item.filename.as_str())==file["filename"].as_str().map(|s|s.trim_end_matches(".disabled"))) {
+                file["name"]=json!(item.name);
+            }
+        }
+    }
     let mut warning = String::new();
     if refresh && !files.is_empty() {
         match identify(&files).await {
             Ok(versions) => {
+                let ids: HashSet<_> = versions.as_object().into_iter().flat_map(|m|m.values()).filter_map(|v|v["project_id"].as_str()).collect();
+                let metadata: Value = if ids.is_empty() { json!([]) } else {
+                    let response = net::client()?.get("https://api.modrinth.com/v2/projects").query(&[("ids",json!(ids).to_string())]).send().await;
+                    match response { Ok(response) if response.status().is_success()=>response.json().await.unwrap_or(json!([])), _=>json!([]) }
+                };
                 let newer = updates(&files, &settings.version, &settings.loader)
                     .await
                     .unwrap_or_else(|e| {
@@ -109,6 +156,10 @@ pub async fn scan_mods(state: &State, refresh: bool) -> Result<Value, String> {
                     let hash = f["hash"].as_str().unwrap_or("").to_string();
                     let v = &versions[&hash];
                     if !v.is_null() {
+                        if let Some(project)=metadata.as_array().and_then(|items|items.iter().find(|p|p["id"]==v["project_id"])) {
+                            if project["title"].is_string() { f["name"]=project["title"].clone(); }
+                            if f["icon_url"].as_str().is_none_or(str::is_empty) { f["icon_url"]=project["icon_url"].clone(); }
+                        }
                         f["project_id"] = v["project_id"].clone();
                         f["version_id"] = v["id"].clone();
                         f["version_number"] = v["version_number"].clone();
@@ -431,6 +482,20 @@ pub async fn update_mod(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn extracts_local_display_name_version_and_icon() {
+        use std::io::Write;
+        let mut writer=zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        writer.start_file("fabric.mod.json",zip::write::SimpleFileOptions::default()).unwrap();
+        writer.write_all(br#"{"name":"Fabric API","version":"0.141.6","icon":"assets/icon.png"}"#).unwrap();
+        let mut image=std::io::Cursor::new(Vec::new());
+        image::DynamicImage::new_rgba8(16,16).write_to(&mut image,image::ImageFormat::Png).unwrap();
+        writer.start_file("assets/icon.png",zip::write::SimpleFileOptions::default()).unwrap();
+        writer.write_all(image.get_ref()).unwrap();
+        let bytes=writer.finish().unwrap().into_inner();
+        let (name,version,icon)=local_details(&bytes,"fabric-api-0.141.6+1.21.11.jar");
+        assert_eq!(name,"Fabric API");assert_eq!(version,"0.141.6");assert!(icon.starts_with("data:image/png;base64,"));
+    }
     #[test]
     fn removes_disabled_mod_from_only_the_active_profile() {
         let root = std::env::temp_dir().join(format!("kyro-remove-mod-{}", chrono::Utc::now().timestamp_micros()));

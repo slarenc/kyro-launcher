@@ -327,6 +327,11 @@ async fn save_server(
 }
 
 #[tauri::command]
+async fn set_server_icon(context: tauri::State<'_, AppContext>, id: String, image: String) -> Result<(), String> {
+    crate::servers::set_icon(context.state(), id, image)
+}
+
+#[tauri::command]
 async fn remove_server(context: tauri::State<'_, AppContext>, id: String) -> Result<Value, String> {
     let app = context.inner().clone();
     let state = app.state();
@@ -418,6 +423,7 @@ pub fn run() -> tauri::Result<()> {
             restore_graphics_preset,
             save_server,
             remove_server,
+            set_server_icon,
             server_status,
             launch_server,
             fps_plan,
