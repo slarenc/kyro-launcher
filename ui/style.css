@@ -178,3 +178,5 @@ input[type=range]{appearance:none;-webkit-appearance:none;height:6px;border:0;bo
 .server-avatar{padding:0;border:0;overflow:hidden}.server-avatar img{display:block;object-fit:cover;flex-shrink:0}.installed-summary{display:flex;align-items:center;gap:14px}.installed-summary #compat-open{margin-left:auto;order:1}
 
 .soft-action{display:inline-flex;align-items:center;justify-content:center;gap:8px;border-radius:13px;background:linear-gradient(140deg,var(--accent-wash),transparent);border-color:color-mix(in srgb,var(--accent) 20%,var(--line))}.soft-action>.icon{width:15px;height:15px;color:var(--accent)}
+
+.searchbox input:focus,.searchbox input:focus-visible{outline:none;box-shadow:none}.searchbox:focus-within{border-color:color-mix(in srgb,var(--accent) 65%,var(--line));box-shadow:0 0 0 3px var(--accent-wash)}
