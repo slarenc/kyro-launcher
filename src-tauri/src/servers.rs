@@ -164,7 +164,7 @@ async fn status(host: &str, port: u16) -> Result<Value, String> {
         })
         .collect();
     Ok(
-        json!({"online":true,"latency":latency,"players":data["players"]["online"].as_u64(),"max":data["players"]["max"].as_u64(),"version":data["version"]["name"].as_str().unwrap_or(""),"description":description}),
+        json!({"online":true,"icon":data["favicon"].as_str().filter(|s| s.len() < 32768 && s.starts_with("data:image/png;base64,")),"latency":latency,"players":data["players"]["online"].as_u64(),"max":data["players"]["max"].as_u64(),"version":data["version"]["name"].as_str().unwrap_or(""),"description":description}),
     )
 }
 
@@ -208,8 +208,8 @@ pub fn save_server(state: &State, name: String, address: String) -> Result<(), S
         {
             return Err("Сервер уже добавлен".into());
         }
-        if data.servers.len() >= 50 {
-            return Err("Можно сохранить до 50 серверов".into());
+        if data.servers.len() >= 3 {
+            return Err("Можно сохранить до 3 серверов".into());
         }
         data.servers.push(FavoriteServer {
             id: chrono::Utc::now().timestamp_micros().to_string(),
@@ -271,6 +271,20 @@ pub fn connect_args(version: &str, raw: &str) -> Result<Vec<String>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn limits_favorites_to_three_and_frees_removed_slot() {
+        let root = std::env::temp_dir().join(format!("kyro-servers-{}", chrono::Utc::now().timestamp_nanos_opt().unwrap()));
+        std::fs::create_dir_all(&root).unwrap();
+        let state = State { root: root.clone(), data: std::sync::Mutex::new(crate::store::Data::default()), busy: std::sync::Mutex::new(false) };
+        for i in 0..3 { save_server(&state, format!("Server {i}"), format!("server{i}.example.org")).unwrap(); }
+        assert!(save_server(&state, "Fourth".into(), "fourth.example.org".into()).unwrap_err().contains("3"));
+        assert!(save_server(&state, "Duplicate".into(), "SERVER0.example.org:25565".into()).is_err());
+        let id = state.data.lock().unwrap().servers[0].id.clone();
+        remove_server(&state, id).unwrap();
+        save_server(&state, "Replacement".into(), "replacement.example.org".into()).unwrap();
+        assert_eq!(state.data.lock().unwrap().servers.len(), 3);
+        std::fs::remove_dir_all(root).unwrap();
+    }
     #[test]
     fn addresses_and_launch_arguments() {
         assert_eq!(address("[::1]:25566").unwrap(), ("::1".into(), 25566));

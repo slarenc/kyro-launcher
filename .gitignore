@@ -29,3 +29,8 @@
 !/tools/hud-vanilla-smoke.cjs
 !/tools/hud-badge-smoke.cjs
 !/tools/hud-cooldowns-smoke.cjs
+
+!/tools/accounts-game-smoke.cjs
+!/tools/accounts-launcher-smoke.cjs
+!/tools/server-preview.cjs
+!/tools/servers-catalog-smoke.cjs

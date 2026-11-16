@@ -29,7 +29,8 @@ public final class AgentHooks {
     public static volatile boolean editor;
     static boolean skyEditor;
     static int skyColorEdit=-1;static String skyHex="";static boolean skySelectAll,skyHexError;
-    static int editorHeight(){return CooldownMenu.open?300:skyEditor?274:278;}
+    static int editorHeight(){return AccountMenu.open?340:CooldownMenu.open?300:skyEditor?274:306;}
+    static int editorWidth(){return AccountMenu.open?640:320;}
     static int editorY(){return Math.min(46,Math.max(8,guiHeight-editorHeight()-8));}
     static final AtomicBoolean painting=new AtomicBoolean();static volatile Frame pending;static Frame shown;
     static final ExecutorService painter=Executors.newSingleThreadExecutor(r->{Thread t=new Thread(r,"KYRO built-in HUD");t.setDaemon(true);return t;});
@@ -68,18 +69,21 @@ public final class AgentHooks {
             boolean preview=Boolean.getBoolean("kyro.hud.agentPreview");
             if(preview&&Boolean.getBoolean("kyro.hud.previewHidden")&&!previewHidden){window("glfwHideWindow",new Class<?>[]{long.class},window);previewHidden=true;}
             if(preview&&Boolean.getBoolean("kyro.hud.requireWorld")&&!game.world)return;
-            if(!game.world&&!preview){cooldownReader.sample(null);CooldownHooks.reset();cooldownRows=Collections.emptyList();ready=false;if(editor)setEditor(false);return;}
+            if(!game.world&&!preview){cooldownReader.sample(null);CooldownHooks.reset();cooldownRows=Collections.emptyList();}
             if(!preview&&game.loading()){ready=false;if(editor)setEditor(false);return;}
             if(now-cooldownAt>=50_000_000L){cooldownAt=now;cooldownRows=CooldownHooks.merge(game.localPlayer,cooldownReader.sample(game.localPlayer));}
             window("glfwGetFramebufferSize",new Class<?>[]{long.class,IntBuffer.class,IntBuffer.class},window,px,py);window("glfwGetWindowSize",new Class<?>[]{long.class,IntBuffer.class,IntBuffer.class},window,wx,wy);
             pixelWidth=px.get(0);pixelHeight=py.get(0);if(pixelWidth<=0||pixelHeight<=0)return;
-            scale=(float)Math.min(Math.max(1,Math.floor(pixelHeight/360.0)),Math.min(pixelWidth/340.0,pixelHeight/340.0));guiWidth=(int)(pixelWidth/scale);guiHeight=(int)(pixelHeight/scale);pointer();ready=true;
+            scale=(float)Math.min(Math.max(1,Math.floor(pixelHeight/360.0)),Math.min(pixelWidth/(AccountMenu.open?660.0:340.0),pixelHeight/360.0));guiWidth=(int)(pixelWidth/scale);guiHeight=(int)(pixelHeight/scale);pointer();ready=true;
+            if(gl==null)gl=new AgentGL(glfwClass.getClassLoader());
+            AccountMenu.tick();
+            if(!game.world&&!preview&&!editor)return;
             if(!editor&&game.hidden())return;
             if(!editor&&!layout.info&&!layout.music&&(!layout.cooldowns||cooldownRows.isEmpty())){if(layout.customSky&&now-lastPaint>=1_000_000_000L&&painting.compareAndSet(false,true)){lastPaint=now;painter.execute(()->{try{PanelPainter.refreshAppearance();}finally{painting.set(false);}});}return;}
             boolean free=cursor()!=212995;
             if(editor&&!free){cursor(212993);free=true;}
             PanelPainter.Track track=media.snapshot();double musicScale=layout.musicScale();hot=free&&inside(mouseX,mouseY,musicX,musicY,272*musicScale,musicHeight);
-            if(preview){if(previewStart==0)previewStart=now;double elapsed=(now-previewStart)/1e9;if(elapsed>6)hot=true;if(elapsed>10&&!editor)setEditor(true);}
+            if(preview){if(previewStart==0)previewStart=now;double elapsed=(now-previewStart)/1e9;if(elapsed>6)hot=true;if(elapsed>10&&!editor){setEditor(true);if(Boolean.getBoolean("kyro.accounts.preview"))AccountMenu.enter();}}
             double target=track.available()&&((layout.expandOnHover&&hot)||layout.announceTracks&&media.trackSeconds()<3.2||holding!=0||seek>=0&&free)?1:0;
             double dt=lastFrame==0?1/60.0:Math.min(.1,(now-lastFrame)/1e9);lastFrame=now;expand+=(target-expand)*(1-Math.exp(-dt*12));if(Math.abs(target-expand)<.002)expand=target;
             musicHeight=(48+68*expand)*musicScale;musicX=x(layout.musicX,layout.musicWidth());musicY=Math.min(y(layout.musicY,layout.musicHeight()),Math.max(0,guiHeight-musicHeight-8));
@@ -100,15 +104,16 @@ public final class AgentHooks {
                 if(layout.info)gl.draw(0,shown.info,dirty,x(layout.infoX,layout.infoWidth())*scale,y(layout.infoY,layout.infoHeight())*scale,(float)(226*layout.infoScale()*scale),(float)(24*layout.infoScale()*scale));
                 if(layout.music)gl.draw(1,shown.music,dirty,(float)musicX*scale,(float)musicY*scale,(float)(272*musicScale*scale),(float)(116*musicScale*scale));
                 if(layout.cooldowns&&shown.cooldowns!=null&&(editor||!cooldownRows.isEmpty())){double cs=layout.cooldownScale();gl.draw(3,shown.cooldowns,dirty,x(layout.cooldownX,(int)Math.ceil(AgentCooldowns.WIDTH*cs))*scale,y(layout.cooldownY,(int)Math.ceil(shown.cooldowns.getHeight()/2f*cs))*scale,(float)(AgentCooldowns.WIDTH*cs*scale),(float)(shown.cooldowns.getHeight()/2f*cs*scale));}
-                if(editor&&dragging<0)gl.draw(2,shown.editor,dirty,(guiWidth-320)/2f*scale,editorY()*scale,320*scale,shown.editor==null?editorHeight()*scale:shown.editor.getHeight()/2f*scale);
+                if(editor&&dragging<0)gl.draw(2,shown.editor,dirty,(guiWidth-editorWidth())/2f*scale,editorY()*scale,editorWidth()*scale,shown.editor==null?editorHeight()*scale:shown.editor.getHeight()/2f*scale);
                 if(preview){double elapsed=(now-previewStart)/1e9;if(captures==0&&elapsed>4||captures==1&&elapsed>9||captures==2&&elapsed>13){capture(captures++);}if(elapsed>15)window("glfwSetWindowShouldClose",new Class<?>[]{long.class,boolean.class},window,true);}
             }finally{gl.end();}
         }catch(Throwable error){failed=true;media.close();log("Overlay disabled after a rendering error",error);}
     }
     static BufferedImage editorImage(boolean info,boolean music,boolean hover,boolean announce,double musicScale){
+        if(AccountMenu.open)return AccountMenu.paint();
         if(CooldownMenu.open)return CooldownMenu.paint();
         if(skyEditor)return skyImage();
-        BufferedImage image=PanelPainter.canvas(320,278);Graphics2D g=PanelPainter.graphics(image);PanelPainter.glass(g,320,278,14,false);
+        BufferedImage image=PanelPainter.canvas(320,306);Graphics2D g=PanelPainter.graphics(image);PanelPainter.glass(g,320,306,14,false);
         PanelPainter.text(g,"KYRO / Панели",14,10,290,13,PanelPainter.ACCENT,0,true);PanelPainter.text(g,"Тяни панели за фон · Right Shift / Esc — закрыть",14,30,290,8,PanelPainter.QUIET,0,false);
         button(g,12,50,"Верхний HUD",info);button(g,164,50,"Музыка",music);button(g,12,78,"Раскрытие",hover);button(g,164,78,"Новый трек",announce);
         PanelPainter.text(g,"Размер музыки · "+Math.round(musicScale*100)+"%",20,113,202,10,PanelPainter.QUIET,0,false);
@@ -119,7 +124,8 @@ public final class AgentHooks {
         PanelPainter.text(g,"Размер КД · "+Math.round(layout.cooldownScale()*100)+"%",20,197,202,10,PanelPainter.QUIET,0,false);
         g.setColor(PanelPainter.ink(18));g.fillRoundRect(234,192,28,24,8,8);g.fillRoundRect(272,192,28,24,8,8);PanelPainter.text(g,"−",243,194,18,14,PanelPainter.WHITE,0,true);PanelPainter.text(g,"+",280,194,18,14,PanelPainter.WHITE,0,true);
         button(g,12,220,"Custom Sky",layout.customSky);action(g,164,220,"Настроить ›");
-        PanelPainter.text(g,"Сбросить позиции",18,254,145,9,PanelPainter.WHITE,0,false);PanelPainter.text(g,"Готово",252,254,55,9,PanelPainter.ACCENT,0,true);g.dispose();return image;
+        action(g,12,248,"Аккаунты ›");
+        PanelPainter.text(g,"Сбросить позиции",18,282,145,9,PanelPainter.WHITE,0,false);PanelPainter.text(g,"Готово",252,282,55,9,PanelPainter.ACCENT,0,true);g.dispose();return image;
     }
     static final int[] SKY_COLORS={0xa185cf,0x72b7f7,0xed9bc8,0xffb875,0x52669c,0x8fd2c3,0xc6b5e5};
     static int nextSkyColor(int color){for(int i=0;i<SKY_COLORS.length;i++)if(SKY_COLORS[i]==(color&0xffffff))return SKY_COLORS[(i+1)%SKY_COLORS.length];return SKY_COLORS[0];}
@@ -173,8 +179,8 @@ public final class AgentHooks {
     static void setEditor(boolean open)throws Exception{
         if(editor==open)return;
         if(open){wasLocked=cursor()==212995;AgentInput.releaseKeys(activeWindow);
-            CooldownMenu.open=false;CooldownMenu.fresh();skyEditor=false;skyColorEdit=-1;editor=true;if(wasLocked)cursor(212993);
-        }else{dragging=-1;holding=0;seek=-1;save();AgentInput.resumePointer(activeWindow);if(wasLocked)cursor(212995);editor=false;}
+            AccountMenu.open=false;CooldownMenu.open=false;CooldownMenu.fresh();skyEditor=false;skyColorEdit=-1;editor=true;if(wasLocked)cursor(212993);
+        }else{AccountMenu.open=false;dragging=-1;holding=0;seek=-1;save();AgentInput.resumePointer(activeWindow);if(wasLocked)cursor(212995);editor=false;}
     }
     public static boolean key(long window,int key,int action)throws Exception{
         return key(window,key,action,0);
@@ -182,17 +188,18 @@ public final class AgentHooks {
     public static boolean key(long window,int key,int action,int mods)throws Exception{
         if(!ready||window!=activeWindow)return false;
         if(key==344){if(action==1)setEditor(!editor);return true;}
-        if(editor){if(key==256&&action==1)setEditor(false);else if(CooldownMenu.open)CooldownMenu.key(key,action,mods);else if(skyEditor&&skyColorEdit>=0)skyHexKey(key,action,mods);return true;}return false;
+        if(editor){if(key==256&&action==1)setEditor(false);else if(AccountMenu.open)AccountMenu.key(key,action,mods);else if(CooldownMenu.open)CooldownMenu.key(key,action,mods);else if(skyEditor&&skyColorEdit>=0)skyHexKey(key,action,mods);return true;}return false;
     }
-    public static boolean character(long window,int point){if(!ready||window!=activeWindow||!editor)return false;if(CooldownMenu.open)CooldownMenu.character(point);return true;}
+    public static boolean character(long window,int point){if(!ready||window!=activeWindow||!editor)return false;if(AccountMenu.open)AccountMenu.character(point);else if(CooldownMenu.open)CooldownMenu.character(point);return true;}
     public static boolean mouse(long window,int button,int action)throws Exception{
         if(!ready||window!=activeWindow)return false;pointer();if(!editor&&cursor()==212995)return false;
         if(button!=0)return editor;
         if(action==0){if(dragging>=0){dragging=-1;save();return true;}PanelPainter.Track t=media.snapshot();if(holding!=0){if(seek>=0){media.command("seek",seek*t.duration*1000);previewUntil=System.nanoTime()+700_000_000L;}else media.command(holding<0?"previous":"next",0);holding=0;return true;}if(seek>=0&&previewUntil==Long.MAX_VALUE){media.command("seek",seek*t.duration*1000);previewUntil=System.nanoTime()+700_000_000L;return true;}return editor;}
         if(action!=1)return editor;
         double mx=mouseX,my=mouseY;
-        if(editor){double ex=(guiWidth-320)/2.0,ey=editorY();if(inside(mx,my,ex,ey,320,editorHeight())){
+        if(editor){double ex=(guiWidth-editorWidth())/2.0,ey=editorY();if(inside(mx,my,ex,ey,editorWidth(),editorHeight())){
             double xx=mx-ex,yy=my-ey;
+            if(AccountMenu.open){AccountMenu.click(xx,yy);return true;}
             if(CooldownMenu.open){CooldownMenu.click(xx,yy);return true;}
             if(skyEditor){skyClick(xx,yy);return true;}
             if(inside(xx,yy,12,50,144,24))layout.info=!layout.info;else if(inside(xx,yy,164,50,144,24)){layout.music=!layout.music;media.enabled=layout.music;}
@@ -205,7 +212,8 @@ public final class AgentHooks {
             else if(inside(xx,yy,164,164,144,24)){CooldownMenu.open=true;CooldownMenu.fresh();}
             else if(inside(xx,yy,234,192,28,24))layout.cooldownScale=Math.max(.2,Math.round((layout.cooldownScale()-.05)*20)/20.0);else if(inside(xx,yy,272,192,28,24))layout.cooldownScale=Math.min(1.5,Math.round((layout.cooldownScale()+.05)*20)/20.0);
             else if(inside(xx,yy,12,220,144,24))layout.customSky=!layout.customSky;else if(inside(xx,yy,164,220,144,24))skyEditor=true;
-            else if(inside(xx,yy,12,248,164,22)){layout.infoX=.02;layout.infoY=.025;layout.musicX=.02;layout.musicY=.83;layout.cooldownX=.02;layout.cooldownY=.6;}else if(inside(xx,yy,240,248,70,22))setEditor(false);save();return true;
+            else if(inside(xx,yy,12,248,144,24)){AccountMenu.enter();}
+            else if(inside(xx,yy,12,276,164,22)){layout.infoX=.02;layout.infoY=.025;layout.musicX=.02;layout.musicY=.83;layout.cooldownX=.02;layout.cooldownY=.6;}else if(inside(xx,yy,240,276,70,22))setEditor(false);save();return true;
         }}
         if(editor&&layout.cooldowns&&shown!=null&&shown.cooldowns!=null){int w=(int)Math.ceil(AgentCooldowns.WIDTH*layout.cooldownScale()),h=(int)Math.ceil(shown.cooldowns.getHeight()/2f*layout.cooldownScale());int cx=x(layout.cooldownX,w),cy=y(layout.cooldownY,h);if(inside(mx,my,cx,cy,w,h)){dragging=2;dragX=mx-cx;dragY=my-cy;return true;}}
         if(layout.music&&inside(mx,my,musicX,musicY,272*layout.musicScale(),musicHeight)){

@@ -1,7 +1,9 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 mod auth;
+mod account_bridge;
 mod compatibility;
 mod cores;
+mod curseforge;
 mod customization;
 mod diagnostics;
 mod fps_boost;
@@ -255,6 +257,7 @@ async fn search_modrinth(
         .map_err(|e| e.to_string())
 }
 async fn compatible(project: &str, kind: &str, s: &Settings) -> Result<Value, String> {
+    if project.starts_with("cf-") { return curseforge::compatible(project, kind, s).await; }
     safe_segment(project)?;
     let mut query = vec![("game_versions", json!([s.version]).to_string())];
     if kind == "mod" || kind == "modpack" {
@@ -340,8 +343,8 @@ async fn install_impl(
         let filename = file["filename"].as_str().ok_or("Нет имени файла")?;
         safe_segment(filename)?;
         let url = file["url"].as_str().ok_or("Нет URL файла")?;
-        if !url.starts_with("https://cdn.modrinth.com/") {
-            return Err("Файл должен находиться на CDN Modrinth".into());
+        if !(if id.starts_with("cf-") { curseforge::allowed_url(url) } else { url.starts_with("https://cdn.modrinth.com/") }) {
+            return Err("Файл должен находиться на CDN выбранного каталога".into());
         }
         let sha = file["hashes"]["sha1"]
             .as_str()

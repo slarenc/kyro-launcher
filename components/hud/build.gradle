@@ -58,3 +58,5 @@ tasks.register('glSmoke',JavaExec) {
  args mode
  if(project.hasProperty('java8Path'))executable=project.property('java8Path')
 }
+tasks.register('accountsTest',JavaExec){dependsOn testClasses;classpath=sourceSets.test.runtimeClasspath;mainClass='ru.kyro.hud.AccountMenuTest';systemProperty 'java.awt.headless','true'}
+tasks.named('check'){dependsOn 'accountsTest'}

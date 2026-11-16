@@ -82,6 +82,15 @@ async fn search_modrinth(
 }
 
 #[tauri::command]
+async fn search_curseforge(
+    context: tauri::State<'_, AppContext>, query: String, kind: String,
+    version: String, loader: String, offset: u32,
+) -> Result<Value, String> {
+    let settings = context.state().data.lock().map_err(|e| e.to_string())?.settings.clone();
+    crate::curseforge::search(query, kind, version, loader, offset, &settings).await
+}
+
+#[tauri::command]
 async fn install_mod(
     context: tauri::State<'_, AppContext>,
     project: String,
@@ -372,6 +381,7 @@ pub fn run() -> tauri::Result<()> {
                 Arc::new(crate::store::State::new()),
                 app.handle().clone(),
             ));
+            crate::account_bridge::start(app.state::<AppContext>().inner().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -382,6 +392,7 @@ pub fn run() -> tauri::Result<()> {
             versions,
             version_library,
             search_modrinth,
+            search_curseforge,
             install_mod,
             launch_game,
             verify_files,

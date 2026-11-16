@@ -468,6 +468,8 @@ pub async fn launch_to(
             ));
             cmd.arg("-Dkyro.hud.presence=https://kyro-client-badges.vinousrhubarb4.chatgpt.site");
             crate::hud::prepare_mappings(state, &settings, &v).await;
+            cmd.arg(format!("-Dkyro.accounts.root={}", crate::account_bridge::folder(&app).display()));
+            cmd.arg(format!("-Dkyro.accounts.session={}", run_id()));
             cmd.args(overlay);
             cmd.arg(text(&v, "mainClass")?)
                 .args(arguments(&v["arguments"]["game"], &vars));

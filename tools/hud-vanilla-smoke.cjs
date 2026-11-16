@@ -39,8 +39,9 @@ const root=path.resolve(__dirname,'..');
  const vars={natives_directory:natives,launcher_name:'KYRO',launcher_version:'QA',classpath:cp.join(path.delimiter),library_directory:path.join(cache,'libraries'),classpath_separator:path.delimiter};
  const expand=s=>s.replace(/\$\{([^}]+)\}/g,(_,name)=>{if(vars[name]===undefined)throw Error('Unknown JVM token '+name);return vars[name];});
  const args=['-Xmx1G','-Xms256M'];for(const item of v.arguments.jvm){if(typeof item==='string')args.push(expand(item));else if(allowed(item))for(const value of Array.isArray(item.value)?item.value:[item.value])args.push(expand(value));}
- const reports=path.join(root,crossVersion?'output/hud-agent-'+v.id:layoutQa?'output/hud-agent-layout':fabricQa?'output/hud-agent-modules-fabric':moduleQa?'output/hud-agent-modules':skyQa?'output/hud-agent-sky':'output/hud-agent-vanilla');fs.mkdirSync(reports,{recursive:true});
+ const reports=path.join(root,process.env.KYRO_ACCOUNTS_QA?'output/hud-accounts-qa':crossVersion?'output/hud-agent-'+v.id:layoutQa?'output/hud-agent-layout':fabricQa?'output/hud-agent-modules-fabric':moduleQa?'output/hud-agent-modules':skyQa?'output/hud-agent-sky':'output/hud-agent-vanilla');fs.mkdirSync(reports,{recursive:true});
  args.push('-javaagent:'+path.join(root,'src-tauri/resources/kyro-hud-agent.jar'),'-Dkyro.hud.player=KyroBuiltinQA','-Dkyro.hud.config='+path.join(fixture,'config'),'-Dkyro.hud.media='+path.join(root,'src-tauri/resources/kyro-media.exe'),'-Dkyro.hud.agentPreview=true','-Dkyro.hud.previewHidden=true','-Dkyro.hud.requireWorld=true','-Dkyro.hud.capture='+reports);
+ if(process.env.KYRO_ACCOUNTS_QA){fs.copyFileSync(path.join(root,'target/module-mappings-qa.json'),path.join(fixture,'config/kyro-hud-mapping.json'));args.push('-Dkyro.accounts.root='+process.env.KYRO_ACCOUNTS_QA,'-Dkyro.accounts.session=qa-client','-Dkyro.accounts.preview=true','-Dkyro.hud.uuid=24c15bb2a67a3fe6ad4843b13d57eb10');}
  if(scenarioQa||layoutQa)args.push('-javaagent:'+path.join(root,'components/hud/build/libs/kyro-module-scenario.jar'));
  if(layoutQa)args.push('-Dkyro.hud.layoutScenario=true');
  if(moduleQa)args.push('-Dkyro.hud.modulesTrace=true');
