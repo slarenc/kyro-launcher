@@ -6,9 +6,9 @@ const fs = require('fs');
  const page = await browser.newPage({viewport:{width:1060,height:600},deviceScaleFactor:1});
  const errors=[];page.on('pageerror',e=>{errors.push(e.message);console.error('UI error:',e.message);});
  await page.addInitScript(() => {
-   const settings={auto_java:true,home_layout:'orbit',home_background:'',username:'Nova',version:'1.21.1',loader:'Fabric',memory_gb:6,java_path:'java',jvm_args:'-XX:+UseG1GC',download_threads:8,launch_behavior:'hide',language:'ru',theme:'black',accent:'#a185cf',microsoft_client_id:''};
+   const settings={language:localStorage.getItem('qa-language')||'ru',auto_java:true,home_layout:'orbit',home_background:'',username:'Nova',version:'1.21.1',loader:'Fabric',memory_gb:6,java_path:'java',jvm_args:'-XX:+UseG1GC',download_threads:8,launch_behavior:'hide',theme:'black',accent:'#a185cf',microsoft_client_id:''};
    const mods=[{icon_url:'https://cdn.modrinth.com/data/P7dR8mSH/icon.png',filename:'sodium.jar',name:'Sodium',enabled:true,size:2000000,version_number:'1.0',dependencies:[{id:'api',name:'Fabric API'}],update:{id:'v2',version:'1.1'}}];
-   const data={settings,sessions:[],notices:[],installed:[],modpacks:[],servers:[{id:'ares',name:'AresMine',address:'mc.aresmine.ru:25565'},{id:'virtus',name:'VirtusMine',address:'jux.virtusmine.fun:25565'}],offline_accounts:[],selected_account:null};
+   const data={settings,sessions:[],notices:[{id:"qa-notice",title:"Готово.",body:"Файлы проверены. Версия доступна в «Скачанных».",time:new Date().toISOString(),unread:true}],installed:[],modpacks:[],servers:[{id:'ares',name:'AresMine',address:'mc.aresmine.ru:25565'},{id:'virtus',name:'VirtusMine',address:'jux.virtusmine.fun:25565'}],offline_accounts:[],selected_account:null};
    const prepared=[{version:'1.21.1',loader:'Fabric',prepared_at:'2026-11-01T12:00:00Z'}];
    window.__TAURI__={core:{invoke:async(name,args)=>{
     if(name==='save_server'){if(data.servers.length>=3)throw Error('Лимит 3');data.servers.push({id:String(Date.now()),...args});return;}
@@ -26,7 +26,7 @@ const fs = require('fs');
     if(name==='versions')return ['1.21.1','1.21','1.20.6'];
     if(name==='version_library')return {releases:[{id:'26.3',date:'2026-09-15T12:00:00Z'},{id:'1.21.1',date:'2024-08-08T12:00:00Z'},{id:'1.21',date:'2024-06-13T12:00:00Z'}],prepared:structuredClone(prepared)};
     if(name==='verify_files'){if(!prepared.some(p=>p.version===settings.version&&p.loader===settings.loader))prepared.push({version:settings.version,loader:settings.loader,prepared_at:new Date().toISOString()});return;}
-    if(name==='save_settings'){Object.assign(settings,args.settings);return;}
+    if(name==='save_settings'){Object.assign(settings,args.settings);localStorage.setItem('qa-language',settings.language);return;}
     if(name==='search_modrinth'){window.__kyroLastSearch=args;return {hits:[{project_id:'sodium',title:'Sodium',description:'Оптимизация рендеринга и повышение FPS',author:'CaffeineMC',downloads:1000000}],total_hits:1};}
     if(name==='install_mod'){
       if(args.kind==='modpack'){
@@ -102,5 +102,23 @@ const fs = require('fs');
  await page.locator('[data-settings-tab="game"]').click();
  assert.equal(await page.locator('.preset-values li').count(),24);
  await page.screenshot({path:'output/ui-refinement/presets-new.png'});
+ await page.locator('[data-page="settings"]').click();
+ await page.locator('[data-settings-tab="general"]').click();
+ await page.locator('[data-setting="language"][data-value="en"]').click();
+ await page.waitForFunction(()=>document.documentElement.lang==='en');
+ assert.equal(await page.locator('[data-page="settings"] span').first().innerText(),'Settings');
+ assert.equal(await page.locator('#account-name').innerText(),'Accounts');
+ assert.match(await page.locator('#mod-updates-card').innerText(),/1 update available/);
+ await page.screenshot({path:'output/ui-refinement/settings-en.png'});
+ const untranslated=[];
+ for(const id of ['play','activity','notifications','settings']){await page.locator('[data-page="'+id+'"]').click();await page.waitForTimeout(100);const texts=await page.locator('#page').innerText();untranslated.push([id,texts.split('\n').filter(t=>/[А-Яа-яЁё]/.test(t)&&t!=='Русский')]);}
+ for(const tab of ['java','downloads','game']){await page.locator('[data-settings-tab="'+tab+'"]').click();await page.waitForTimeout(100);untranslated.push([tab,(await page.locator('#page').innerText()).split('\n').filter(t=>/[А-Яа-яЁё]/.test(t))]);}
+ await page.locator('[data-page="play"]').click();await page.locator('#fps-boost').click();await page.locator('.fps-rows').waitFor();await page.waitForTimeout(100);untranslated.push(['fps',(await page.locator('#fps-dialog').innerText()).split('\n').filter(t=>/[А-Яа-яЁё]/.test(t))]);await page.locator('.fps-dismiss').click();
+ await page.locator('#profile-button').click();await page.waitForTimeout(100);untranslated.push(['account',(await page.locator('#account-dialog').innerText()).split('\n').filter(t=>/[А-Яа-яЁё]/.test(t))]);await page.locator('#dialog-close').click();
+ assert.deepEqual(untranslated.filter(([,strings])=>strings.length),[], 'All launcher controls must be translated');
+ await page.locator('[data-page="notifications"]').click();assert.equal(await page.locator('.notice').count(),1);await page.locator('#clear-notices').click();await page.waitForSelector('.notice-empty');assert.equal(await page.locator('.notice').count(),0);assert.equal(await page.locator('#clear-notices').isDisabled(),true);
+ await page.locator('[data-page="play"]').click();await page.locator('#change-profile').click();await page.waitForSelector('#version-dialog[open]');assert.equal(await page.locator('#version-dialog h2').innerText(),'Versions & loaders');await page.locator('.version-close').click();
+ await page.reload();await page.waitForSelector('#play');await page.waitForFunction(()=>document.documentElement.lang==='en');assert.equal(await page.locator('#play').innerText(),'Play');
+ await page.locator('[data-page="settings"]').click();await page.locator('[data-setting="language"][data-value="ru"]').click();await page.waitForFunction(()=>document.documentElement.lang==='ru');assert.equal(await page.locator('[data-page="settings"] span').first().innerText(),'Настройки');
  await browser.close();if(errors.length)throw Error(errors.join('\n'));console.log('PASS: automatic icons, removed controls, FPS state after reload, redesigned presets and tabs');
 })().catch(e=>{console.error(e);process.exit(1);});
