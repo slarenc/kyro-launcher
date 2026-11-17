@@ -87,8 +87,29 @@ struct Tail {
     path: PathBuf,
     offset: u64,
     pending: String,
+    xml_client_event: bool,
 }
 impl Tail {
+    fn apply_line(&mut self, line: &str, server: &mut Option<String>) {
+        let trimmed = line.trim();
+        if trimmed.starts_with("<log4j:Event ") {
+            self.xml_client_event = (trimmed.contains("thread=\"Render thread\"")
+                || trimmed.contains("thread=\"Client thread\""))
+                && (trimmed.contains("level=\"INFO\"") || trimmed.contains("level=\"WARN\""));
+        } else if trimmed == "</log4j:Event>" {
+            self.xml_client_event = false;
+        } else if let Some(message) = trimmed.strip_prefix("<log4j:Message><![CDATA[") {
+            if self.xml_client_event {
+                if let Some(message) = message.strip_suffix("]]></log4j:Message>") {
+                    apply_message(message, server);
+                }
+            }
+            // Never interpret subsequent lines of a multiline chat message as events.
+            self.xml_client_event = false;
+        } else {
+            apply_log_line(line, server);
+        }
+    }
     fn update(&mut self, server: &mut Option<String>) {
         let Ok(mut file) = File::open(&self.path) else {
             return;
@@ -99,6 +120,7 @@ impl Tail {
         if meta.len() < self.offset {
             self.offset = 0;
             self.pending.clear();
+            self.xml_client_event = false;
         }
         if file.seek(SeekFrom::Start(self.offset)).is_err() {
             return;
@@ -112,7 +134,7 @@ impl Tail {
         while let Some(end) = self.pending.find('\n') {
             let line = self.pending[..end].to_owned();
             self.pending.drain(..=end);
-            apply_log_line(&line, server);
+            self.apply_line(&line, server);
         }
         if self.pending.len() > 8192 {
             self.pending.clear();
@@ -127,6 +149,9 @@ fn apply_log_line(line: &str, server: &mut Option<String>) {
     if !(prefix.contains("Render thread/INFO") || prefix.contains("Client thread/INFO")) {
         return;
     }
+    apply_message(message, server);
+}
+fn apply_message(message: &str, server: &mut Option<String>) {
     if let Some(address) = message.strip_prefix("Connecting to ") {
         let address = address.trim();
         let address = if let Some((host, port)) = address.rsplit_once(", ") {
@@ -313,6 +338,28 @@ fn worker(state: Weak<State>, receiver: mpsc::Receiver<Command>, status: Arc<Mut
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn tracks_xml_server_events_and_ignores_chat_and_other_threads() {
+        let mut tail = Tail::default();
+        let mut server = None;
+        let header = r#"<log4j:Event logger="net.minecraft.class_412" level="INFO" thread="Render thread">"#;
+        tail.apply_line(header, &mut server);
+        tail.apply_line("<log4j:Message><![CDATA[Connecting to mc.example.org, 25565]]></log4j:Message>", &mut server);
+        assert_eq!(server.as_deref(), Some("mc.example.org"));
+        tail.apply_line("</log4j:Event>", &mut server);
+        tail.apply_line(header, &mut server);
+        tail.apply_line("<log4j:Message><![CDATA[[CHAT] Connecting to fake.org, 25565]]></log4j:Message>", &mut server);
+        assert_eq!(server.as_deref(), Some("mc.example.org"));
+        tail.apply_line(r#"<log4j:Event level="INFO" thread="Download-9">"#, &mut server);
+        tail.apply_line("<log4j:Message><![CDATA[Connecting to fake.org, 25565]]></log4j:Message>", &mut server);
+        assert_eq!(server.as_deref(), Some("mc.example.org"));
+        tail.apply_line(header, &mut server);
+        tail.apply_line("<log4j:Message><![CDATA[Connecting to second.org, 25566]]></log4j:Message>", &mut server);
+        assert_eq!(server.as_deref(), Some("second.org:25566"));
+        tail.apply_line(header, &mut server);
+        tail.apply_line("<log4j:Message><![CDATA[Disconnected from server]]></log4j:Message>", &mut server);
+        assert!(server.is_none());
+    }
     #[test]
     fn presence_fields_and_server_tracking() {
         assert_eq!(

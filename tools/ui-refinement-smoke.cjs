@@ -16,7 +16,7 @@ const fs = require('fs');
     if(name==='launch_server'){window.__serverLaunch=args.id;return;}
     if(name==='search_curseforge'){window.__cfSearch=args;return {hits:[{project_id:'cf-42',title:'CurseForge Test',description:'Test',author:'Author',downloads:42}],total_hits:1};}
     if(name==='server_status')return {online:true,players:22,icon:window.__qaIcon};
-    if(name==='snapshot'){const a=data.offline_accounts.find(a=>'offline:'+a.uuid===data.selected_account);return {data:structuredClone(data),account:a?{...a,kind:'offline'}:null,paths:{launcher:'C:/Kyro',data:'C:/Kyro/data',profile:`C:/Kyro/data/instances/${settings.version}-${settings.loader}`},busy:false};}
+    if(name==='snapshot'){const a=data.offline_accounts.find(a=>'offline:'+a.uuid===data.selected_account);return {data:structuredClone(data),account:a?{...a,kind:'offline'}:null,paths:{launcher:'C:/Kyro',data:'C:/Kyro/data',profile:`C:/Kyro/data/instances/${settings.version}-${settings.loader}`},busy:false,fps_enabled:settings.loader==='Fabric'?2:0};}
     if(name==='offline_account'){
       if(args.action==='add'){const uuid=args.value;data.offline_accounts.push({name:args.value,uuid});data.selected_account='offline:'+uuid;}
       if(args.action==='select')data.selected_account=args.value;
@@ -70,7 +70,12 @@ const fs = require('fs');
  await page.addInitScript(icons=>{window.__qaIcon=icons.sodium;window.__qaIcons=icons;},Object.fromEntries(['sodium','fabric-api'].map(name=>[name,'data:image/png;base64,'+fs.readFileSync('output/ui-refinement/'+name+'.png').toString('base64')])));
  await page.goto('file:///'+path.resolve('ui/index.html').replaceAll('\\','/'));
  const assert=require('assert/strict');fs.mkdirSync('output/ui-refinement',{recursive:true});
- await page.waitForTimeout(600);await page.screenshot({path:'output/ui-refinement/home.png'});
+ await page.waitForTimeout(600);
+ await page.locator('#change-profile').click();await page.locator('#version-dialog[open]').waitFor();
+ await page.locator('.version-close').click();
+ assert.equal(await page.locator('#game-version,#game-loader').count(),0);
+ await page.screenshot({path:'output/ui-refinement/home.png'});
+ await page.locator('.profile-launch').screenshot({path:'output/ui-refinement/profile-new.png'});
  await page.setViewportSize({width:1060,height:740});
  await page.locator('[data-page="catalog"]').click();await page.getByText('CurseForge Test',{exact:true}).waitFor();
  await page.locator('#search-query').fill('sodium');await page.waitForTimeout(700);assert.equal(await page.evaluate(()=>window.__kyroLastSearch.query),'sodium');assert.equal(await page.locator('#search-query').getAttribute('autocomplete'),'off');
@@ -81,5 +86,21 @@ const fs = require('fs');
  await page.screenshot({path:'output/ui-refinement/installed.png'});
  await page.locator('[data-page="settings"]').click();await page.locator('[data-settings-tab="java"]').click();await page.screenshot({path:'output/ui-refinement/settings.png'});
  await page.locator('[data-page="diagnostics"]').click();await page.waitForTimeout(200);await page.screenshot({path:'output/ui-refinement/diagnostics.png'});
- await browser.close();if(errors.length)throw Error(errors.join('\n'));console.log('PASS: live search, unified installed tab, hidden filenames, screenshots');
+
+ await page.locator('[data-page="play"]').click();
+ assert.match(await page.locator('#fps-boost').innerText(),/Включён/);
+ assert.equal(await page.locator('[data-server-icon],#server-icon-file').count(),0);
+ await page.reload();await page.locator('#fps-boost.has-boost').waitFor();
+ assert.match(await page.locator('#fps-boost').innerText(),/Включён/);
+ await page.locator('[data-page="activity"]').click();
+ assert.equal(await page.locator('#activity-year-trigger').count(),0);
+ await page.locator('[data-page="notifications"]').click();
+ await page.screenshot({path:'output/ui-refinement/notifications-new.png'});
+ await page.locator('[data-page="settings"]').click();
+ await page.locator('[data-settings-tab="downloads"]').click();
+ assert.equal(await page.locator('#curseforge-key').count(),0);
+ await page.locator('[data-settings-tab="game"]').click();
+ assert.equal(await page.locator('.preset-values li').count(),24);
+ await page.screenshot({path:'output/ui-refinement/presets-new.png'});
+ await browser.close();if(errors.length)throw Error(errors.join('\n'));console.log('PASS: automatic icons, removed controls, FPS state after reload, redesigned presets and tabs');
 })().catch(e=>{console.error(e);process.exit(1);});

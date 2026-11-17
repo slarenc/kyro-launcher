@@ -46,6 +46,22 @@ pub fn enabled_count(scan: &Value) -> usize {
         .count()
 }
 
+/// Read actual installed files without depending on the network or UI cache.
+pub fn local_enabled_count(state: &State, settings: &Settings) -> Result<usize, String> {
+    let dir = state.instance_dir(settings)?.join("mods");
+    if !dir.exists() { return Ok(0); }
+    let mut files = Vec::new();
+    for entry in fs::read_dir(dir).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        if !entry.file_type().map_err(|e| e.to_string())?.is_file() { continue; }
+        let filename = entry.file_name().to_string_lossy().into_owned();
+        if filename.ends_with(".jar") {
+            files.push(json!({"filename":filename,"enabled":true}));
+        }
+    }
+    Ok(enabled_count(&json!({"files":files})))
+}
+
 fn settings(state: &State) -> Result<Settings, String> {
     Ok(state
         .data
@@ -393,6 +409,27 @@ async fn install_inner(app: &AppContext, approved: &Value) -> Result<Value, Stri
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn local_boost_survives_restart_and_tracks_profile_and_disabled_files() {
+        let root = std::env::temp_dir().join(format!("kyro-fps-status-{}", chrono::Utc::now().timestamp_nanos_opt().unwrap()));
+        let data = crate::store::Data::default();
+        let settings = data.settings.clone();
+        let state = State { root: root.clone(), data: std::sync::Mutex::new(data), busy: std::sync::Mutex::new(false) };
+        let mods = state.instance_dir(&settings).unwrap().join("mods");
+        fs::create_dir_all(&mods).unwrap();
+        fs::write(mods.join("sodium-1.jar"), b"fixture").unwrap();
+        fs::write(mods.join("sodium-extra-1.jar"), b"fixture").unwrap();
+        fs::write(mods.join("lithium-1.jar.disabled"), b"fixture").unwrap();
+        assert_eq!(local_enabled_count(&state, &settings).unwrap(), 1);
+        let reopened = State { root: root.clone(), data: std::sync::Mutex::new(crate::store::Data::default()), busy: std::sync::Mutex::new(false) };
+        assert_eq!(local_enabled_count(&reopened, &settings).unwrap(), 1);
+        let mut other = settings.clone();
+        other.version = "1.20.1".into();
+        assert_eq!(local_enabled_count(&reopened, &other).unwrap(), 0);
+        fs::rename(mods.join("sodium-1.jar"), mods.join("sodium-1.jar.disabled")).unwrap();
+        assert_eq!(local_enabled_count(&reopened, &settings).unwrap(), 0);
+        fs::remove_dir_all(root).unwrap();
+    }
     #[test]
     fn highlight_requires_enabled_optimization_mods() {
         assert_eq!(

@@ -188,3 +188,46 @@ input[type=range]{appearance:none;-webkit-appearance:none;height:6px;border:0;bo
 html,body{height:100%;overflow:hidden}#app{height:100dvh;min-height:0;overflow:hidden}main,#page{min-height:0}.sidebar{min-height:0;box-sizing:border-box;overflow:hidden}.sidebar:has(#operation:not([hidden])) nav{gap:3px}.sidebar:has(#operation:not([hidden])) nav button{min-height:42px;padding-top:9px;padding-bottom:9px}.sidebar:has(#operation:not([hidden])) .brand{margin-bottom:8px}
 
 .activity-tooltip{width:190px;padding:12px 14px;border-radius:13px}.activity-tooltip .tooltip-date{font-size:10px;margin-bottom:9px}.activity-tooltip strong{font-size:22px;margin-bottom:7px}.activity-tooltip .tooltip-meta{font-size:10px;gap:6px}
+/* Compact navigation and readable graphics profiles. */
+.tabs{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:6px;margin-bottom:24px;border:1px solid var(--line);border-radius:16px;background:color-mix(in srgb,var(--text) 2%,var(--bg))}
+.tabs button{font:500 13px var(--sans);letter-spacing:0;border:1px solid transparent;border-radius:11px;padding:11px 17px;color:var(--muted);margin:0}
+.tabs button.selected{color:var(--text);background:var(--accent-wash);border-color:color-mix(in srgb,var(--accent) 35%,var(--line));box-shadow:0 2px 8px #0002}
+.tabs button.selected:after{display:none}.tabs #read-notices{margin-left:auto;font-size:12px;color:var(--accent)}
+.session-profile{display:inline-flex;align-items:center;gap:9px;justify-self:start;padding:7px 10px;border-radius:9px;background:color-mix(in srgb,var(--text) 4%,transparent);border:0;font-size:12px;font-weight:550;white-space:nowrap}
+.session-row .session-profile small{display:inline;margin:0;padding:3px 6px;border-radius:5px;color:var(--accent);background:var(--accent-wash);font-size:10px;font-weight:500}
+.server-avatar{display:flex;align-items:center;justify-content:center;flex-shrink:0;overflow:hidden;cursor:default}
+.preset-grid{gap:16px;align-items:stretch}.preset-card{position:relative;display:flex;flex-direction:column;padding:22px;border-radius:20px;background:linear-gradient(145deg,color-mix(in srgb,var(--accent) 5%,var(--bg)),var(--bg));border:1px solid var(--line)}
+.preset-symbol{display:grid;place-items:center;width:40px;height:40px;margin-bottom:18px;border:1px solid color-mix(in srgb,var(--accent) 25%,var(--line));border-radius:12px;background:var(--accent-wash);color:var(--accent);font:25px var(--sans)}
+.preset-card h2{font:600 18px var(--sans);letter-spacing:-.4px;margin:0 0 9px}.preset-card>p{color:var(--muted);min-height:44px;margin:0 0 20px;line-height:1.65}
+.preset-card .preset-values{list-style:none;padding:0;margin:0 0 24px;border-top:1px solid var(--line);font:12px/1.55 var(--sans);color:var(--text)}
+.preset-values li{padding:9px 0;border-bottom:1px solid color-mix(in srgb,var(--line) 65%,transparent)}
+.preset-values li:before{content:'✓';color:var(--accent);margin-right:9px}.preset-card>button{margin-top:auto;padding:11px;border-radius:10px;font-size:12px;background:var(--accent-wash);border-color:color-mix(in srgb,var(--accent) 30%,var(--line))}
+#restore-preset{margin-top:18px;font-size:12px;color:var(--muted);border-radius:10px}
+.home .version-controls{flex-wrap:wrap}.home .version-controls .fps-boost.has-boost{padding:7px 9px;border-radius:9px}
+@media(max-width:850px){.preset-grid{grid-template-columns:1fr}.preset-card>p{min-height:0}.tabs button{padding:9px 12px}}
+.notice-empty{display:flex;flex-direction:column;align-items:center;text-align:center;padding:48px 24px 40px;isolation:isolate;position:relative}
+.notice-empty:before{content:'';position:absolute;z-index:-1;top:8px;left:50%;transform:translateX(-50%);width:min(360px,100%);height:210px;background:radial-gradient(ellipse,var(--accent-wash),transparent 70%);pointer-events:none}
+.notice-empty-art{position:relative;display:grid;place-items:center;width:104px;height:104px;margin-bottom:24px}
+.notice-empty-ring{position:absolute;inset:0;border:1px solid color-mix(in srgb,var(--accent) 12%,transparent);border-radius:50%}
+.notice-empty-icon{display:grid;place-items:center;width:68px;height:68px;border-radius:22px;background:linear-gradient(145deg,color-mix(in srgb,var(--accent) 13%,var(--bg)),var(--bg));border:1px solid color-mix(in srgb,var(--accent) 27%,var(--line));box-shadow:0 12px 30px #0002;transform:rotate(-8deg);color:var(--accent)}
+.notice-empty-icon .icon{width:28px;height:28px;transform:rotate(8deg);stroke-width:1.4}
+.notice-empty-check{position:absolute;right:12px;bottom:15px;width:23px;height:23px;display:grid;place-items:center;border:3px solid var(--bg);border-radius:50%;background:var(--accent);color:var(--accent-ink);font:600 11px var(--sans)}
+.notice-empty>strong{font:550 22px/1.4 var(--sans);letter-spacing:-.6px;color:var(--text)}
+.notice-empty>p{max-width:345px;margin:12px 0 26px;font:13px/1.8 var(--sans);color:var(--muted)}
+.notice-empty-caption{font:500 9px/1.6 var(--sans);letter-spacing:1.7px;color:var(--muted);opacity:.65}
+
+/* Profile typography echoes the launcher headings and orbital artwork. */
+.home .profile-launch{width:330px;max-width:100%}
+.home #change-profile{position:relative;display:flex;flex-direction:column;align-items:flex-start;width:100%;padding:0 30px 25px 0;margin:0 0 18px;text-align:left;border:0;border-radius:0;border-bottom:1px solid var(--line);background:transparent;color:var(--text);transition:border-color .2s}
+.home #change-profile:hover:not(:disabled){background:transparent;border-color:var(--accent)}
+.home .profile-launch .version-display{display:block;font:400 clamp(65px,7.4vw,88px)/1.08 Georgia,'Times New Roman',serif;letter-spacing:-3px;padding:0;margin:0 0 15px;color:var(--text);white-space:nowrap}
+.profile-core{display:flex;align-items:center;gap:17px;font:400 23px/1.4 var(--sans);color:var(--text)}.profile-edition{font:500 8px/1.4 var(--sans);letter-spacing:1.8px;color:var(--muted);border-left:1px solid var(--line);padding-left:17px}
+.profile-chevron{position:absolute;right:4px;bottom:33px;width:17px;height:17px;fill:none;stroke:var(--muted);stroke-width:1.4;transition:transform .2s,color .2s}#change-profile:hover .profile-chevron{stroke:var(--text);transform:translateY(2px)}
+.profile-tools{display:flex;align-items:center;justify-content:flex-start;gap:8px;margin:0 0 22px}
+.home .profile-tools .fps-boost{display:flex;align-items:center;gap:8px;min-width:0;height:32px;margin:0;padding:0 8px;border:1px solid transparent;border-radius:9px;background:transparent;font:500 10px var(--sans);color:var(--muted);box-shadow:none}
+.profile-tools .boost-mark{font-size:18px;color:var(--muted)}.profile-tools .boost-status{display:flex;align-items:center;gap:5px;font-size:9px;color:var(--muted);margin-left:5px}.profile-tools .boost-status:before{content:'';width:4px;height:4px;border-radius:50%;background:var(--muted)}
+.home .profile-tools .fps-boost.has-boost{background:var(--accent-wash);border-color:color-mix(in srgb,var(--accent) 18%,transparent);color:var(--text)}.profile-tools .has-boost .boost-mark,.profile-tools .has-boost .boost-status{color:var(--accent)}.profile-tools .has-boost .boost-status:before{background:var(--accent)}
+.home .profile-tools .home-folder{display:grid;place-items:center;width:32px;height:32px;padding:0;border:1px solid var(--line);border-radius:9px;background:transparent;color:var(--muted)}.profile-tools .home-folder .icon{width:16px;height:16px}
+.home .profile-launch .play-button{display:flex;align-items:center;justify-content:center;width:100%;height:62px;min-height:62px;margin:0;padding:0 20px;border-radius:32px;border:1px solid #dddde8;background:#dddde8;color:#111017;font:600 17px var(--sans);box-shadow:0 4px 26px #dddded0b;gap:13px}.home .profile-launch .play-button:hover:not(:disabled){background:#eeeef5;border-color:#eeeef5;box-shadow:0 5px 30px #dddded16}.profile-launch .play-button .icon{width:17px;height:17px}
+
+.home .profile-launch .home-note{display:flex;justify-content:center;align-items:center;gap:7px;font:11px/1.7 var(--sans);color:var(--muted);margin:16px 0 0;max-width:none}.ready-dot{width:4px;height:4px;border-radius:50%;background:var(--muted)}

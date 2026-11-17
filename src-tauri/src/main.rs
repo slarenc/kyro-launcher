@@ -41,7 +41,7 @@ fn snapshot(state: &State) -> Result<Value, String> {
         microsoft_account.clone()
     };
     Ok(
-        json!({"paths":{"launcher":state.target_path("launcher",&d.settings)?,"data":state.root,"profile":state.target_path("instance",&d.settings)?},"data":d,"account":account,"microsoft_account":microsoft_account,"root":state.root,"busy":*state.busy.lock().map_err(|e|e.to_string())?}),
+        json!({"fps_enabled":fps_boost::local_enabled_count(state, &d.settings).ok(),"paths":{"launcher":state.target_path("launcher",&d.settings)?,"data":state.root,"profile":state.target_path("instance",&d.settings)?},"data":d,"account":account,"microsoft_account":microsoft_account,"root":state.root,"busy":*state.busy.lock().map_err(|e|e.to_string())?}),
     )
 }
 
