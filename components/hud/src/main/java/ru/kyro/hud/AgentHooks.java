@@ -29,7 +29,7 @@ public final class AgentHooks {
     public static volatile boolean editor;
     static boolean skyEditor;
     static int skyColorEdit=-1;static String skyHex="";static boolean skySelectAll,skyHexError;
-    static int editorHeight(){return AccountMenu.open?340:CooldownMenu.open?300:skyEditor?274:306;}
+    static int editorHeight(){return AccountMenu.open?340:CooldownMenu.open?300:skyEditor?274:278;}
     static int editorWidth(){return AccountMenu.open?640:320;}
     static int editorY(){return Math.min(46,Math.max(8,guiHeight-editorHeight()-8));}
     static final AtomicBoolean painting=new AtomicBoolean();static volatile Frame pending;static Frame shown;
@@ -113,7 +113,7 @@ public final class AgentHooks {
         if(AccountMenu.open)return AccountMenu.paint();
         if(CooldownMenu.open)return CooldownMenu.paint();
         if(skyEditor)return skyImage();
-        BufferedImage image=PanelPainter.canvas(320,306);Graphics2D g=PanelPainter.graphics(image);PanelPainter.glass(g,320,306,14,false);
+        BufferedImage image=PanelPainter.canvas(320,278);Graphics2D g=PanelPainter.graphics(image);PanelPainter.glass(g,320,278,14,false);
         PanelPainter.text(g,"KYRO / Панели",14,10,290,13,PanelPainter.ACCENT,0,true);PanelPainter.text(g,"Тяни панели за фон · Right Shift / Esc — закрыть",14,30,290,8,PanelPainter.QUIET,0,false);
         button(g,12,50,"Верхний HUD",info);button(g,164,50,"Музыка",music);button(g,12,78,"Раскрытие",hover);button(g,164,78,"Новый трек",announce);
         PanelPainter.text(g,"Размер музыки · "+Math.round(musicScale*100)+"%",20,113,202,10,PanelPainter.QUIET,0,false);
@@ -124,8 +124,7 @@ public final class AgentHooks {
         PanelPainter.text(g,"Размер КД · "+Math.round(layout.cooldownScale()*100)+"%",20,197,202,10,PanelPainter.QUIET,0,false);
         g.setColor(PanelPainter.ink(18));g.fillRoundRect(234,192,28,24,8,8);g.fillRoundRect(272,192,28,24,8,8);PanelPainter.text(g,"−",243,194,18,14,PanelPainter.WHITE,0,true);PanelPainter.text(g,"+",280,194,18,14,PanelPainter.WHITE,0,true);
         button(g,12,220,"Custom Sky",layout.customSky);action(g,164,220,"Настроить ›");
-        action(g,12,248,"Аккаунты ›");
-        PanelPainter.text(g,"Сбросить позиции",18,282,145,9,PanelPainter.WHITE,0,false);PanelPainter.text(g,"Готово",252,282,55,9,PanelPainter.ACCENT,0,true);g.dispose();return image;
+        PanelPainter.text(g,"Сбросить позиции",18,254,145,9,PanelPainter.WHITE,0,false);PanelPainter.text(g,"Готово",252,254,55,9,PanelPainter.ACCENT,0,true);g.dispose();return image;
     }
     static final int[] SKY_COLORS={0xa185cf,0x72b7f7,0xed9bc8,0xffb875,0x52669c,0x8fd2c3,0xc6b5e5};
     static int nextSkyColor(int color){for(int i=0;i<SKY_COLORS.length;i++)if(SKY_COLORS[i]==(color&0xffffff))return SKY_COLORS[(i+1)%SKY_COLORS.length];return SKY_COLORS[0];}
@@ -212,8 +211,7 @@ public final class AgentHooks {
             else if(inside(xx,yy,164,164,144,24)){CooldownMenu.open=true;CooldownMenu.fresh();}
             else if(inside(xx,yy,234,192,28,24))layout.cooldownScale=Math.max(.2,Math.round((layout.cooldownScale()-.05)*20)/20.0);else if(inside(xx,yy,272,192,28,24))layout.cooldownScale=Math.min(1.5,Math.round((layout.cooldownScale()+.05)*20)/20.0);
             else if(inside(xx,yy,12,220,144,24))layout.customSky=!layout.customSky;else if(inside(xx,yy,164,220,144,24))skyEditor=true;
-            else if(inside(xx,yy,12,248,144,24)){AccountMenu.enter();}
-            else if(inside(xx,yy,12,276,164,22)){layout.infoX=.02;layout.infoY=.025;layout.musicX=.02;layout.musicY=.83;layout.cooldownX=.02;layout.cooldownY=.6;}else if(inside(xx,yy,240,276,70,22))setEditor(false);save();return true;
+            else if(inside(xx,yy,12,248,164,22)){layout.infoX=.02;layout.infoY=.025;layout.musicX=.02;layout.musicY=.83;layout.cooldownX=.02;layout.cooldownY=.6;}else if(inside(xx,yy,240,248,70,22))setEditor(false);save();return true;
         }}
         if(editor&&layout.cooldowns&&shown!=null&&shown.cooldowns!=null){int w=(int)Math.ceil(AgentCooldowns.WIDTH*layout.cooldownScale()),h=(int)Math.ceil(shown.cooldowns.getHeight()/2f*layout.cooldownScale());int cx=x(layout.cooldownX,w),cy=y(layout.cooldownY,h);if(inside(mx,my,cx,cy,w,h)){dragging=2;dragX=mx-cx;dragY=my-cy;return true;}}
         if(layout.music&&inside(mx,my,musicX,musicY,272*layout.musicScale(),musicHeight)){

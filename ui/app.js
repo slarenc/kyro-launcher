@@ -1,5 +1,5 @@
 'use strict';
-const CURRENT_LAUNCHER_VERSION = '0.8.9';
+const CURRENT_LAUNCHER_VERSION = '0.8.10';
 const $ = (q, root = document) => root.querySelector(q);
 const $$ = (q, root = document) => [...root.querySelectorAll(q)];
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -28,6 +28,22 @@ function toast(message){ $('#toast').textContent=String(message);$('#toast').hid
 function failure(e){toast(e?.message || String(e));}
 function duration(seconds){const m=Math.floor(seconds/60);return m>=60?`${Math.floor(m/60)} ч${m%60?` ${m%60} мин`:''}`:`${m} мин`;}
 function dateKey(date){return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;}
+function activityStreak(sessions,now=new Date()){
+ const today=new Date(now);today.setHours(0,0,0,0);
+ const days=new Set();
+ for(const session of sessions){
+  const start=new Date(session.started);if(!Number.isFinite(start.getTime())||start>now)continue;
+  const seconds=Number(session.seconds);
+  const end=new Date(Math.min(now.getTime(),start.getTime()+(Number.isFinite(seconds)?Math.max(0,seconds)*1000:0)));
+  const day=new Date(start);day.setHours(0,0,0,0);
+  // A session ending exactly at midnight has no play time in the next day.
+  const last=new Date(Math.max(start.getTime(),end.getTime()-1));last.setHours(0,0,0,0);
+  for(;day<=last;day.setDate(day.getDate()+1))days.add(dateKey(day));
+ }
+ const cursor=new Date(today);if(!days.has(dateKey(cursor)))cursor.setDate(cursor.getDate()-1);
+ let streak=0;while(days.has(dateKey(cursor))){streak++;cursor.setDate(cursor.getDate()-1);}
+ return streak;
+}
 const s=()=>state.data.settings;
 async function sync(){if(native)state=await invoke('snapshot');updateChrome();}
 function updateChrome(){
@@ -54,7 +70,8 @@ async function persist(){
  try {if(native)await invoke('save_settings',{settings:s()});else localStorage.setItem('kyro-preview-settings',JSON.stringify(s()));updateChrome();return true;}catch(e){failure(e);return false;}
 }
 function setSetting(key,value,rerender=false){s()[key]=value;updateChrome();clearTimeout(saveTimer);saveTimer=setTimeout(persist,350);if(rerender)render();}
-function navigate(next){page=next;updateChrome();render();window.KyroAssist.enter(next);if(page==='catalog'&&!catalogData&&!catalogLoading)loadCatalog();}
+async function refreshActivity(){if(!native||page!=='activity')return;try{await sync();if(page==='activity')render();}catch(e){failure(e);}}
+function navigate(next){page=next;updateChrome();render();window.KyroAssist.enter(next);if(page==='activity')void refreshActivity();if(page==='catalog'&&!catalogData&&!catalogLoading)loadCatalog();}
 function heading(title,subtitle='',right=''){return `<div class="page-heading"><div><h1>${title}</h1>${subtitle?`<p>${subtitle}</p>`:''}</div>${right}</div>`;}
 function empty(title,text,ico='box'){return `<div class="empty">${icon(ico)}<strong>${title}</strong>${text}</div>`;}
 function render(){
@@ -89,8 +106,7 @@ function activity(){
  sessions.forEach(x=>{const k=dateKey(new Date(x.started));const d=byDay.get(k)||{seconds:0,count:0};d.seconds+=x.seconds;d.count++;byDay.set(k,d);});
  const today=new Date();today.setHours(0,0,0,0);const monday=new Date(today);monday.setDate(monday.getDate()-(monday.getDay()+6)%7);
  const week=sessions.filter(x=>new Date(x.started)>=monday).reduce((n,x)=>n+x.seconds,0);
- const cursor=new Date(today);if(!byDay.has(dateKey(cursor)))cursor.setDate(cursor.getDate()-1);let streak=0;
- while(byDay.has(dateKey(cursor))){streak++;cursor.setDate(cursor.getDate()-1);}
+ const streak=activityStreak(sessions);
  const best=Math.max(0,...sessions.map(x=>x.seconds));
  const start=new Date(year,0,1);start.setDate(start.getDate()-(start.getDay()+6)%7);
  const cells=[];for(let i=0;i<371;i++){
@@ -234,6 +250,9 @@ $('#minimize').onclick=()=>native&&window.__TAURI__.window.getCurrentWindow().mi
 $('#maximize').onclick=()=>native&&window.__TAURI__.window.getCurrentWindow().toggleMaximize();
 $('#close').onclick=()=>{if(state.busy){toast('Дождитесь завершения игры или установки, чтобы сохранить историю сессии.');return;}if(native)window.__TAURI__.window.getCurrentWindow().close();};
 async function boot(){
+ window.addEventListener('focus',()=>void refreshActivity());
+ document.addEventListener('visibilitychange',()=>{if(!document.hidden)void refreshActivity();});
+ refreshTimer=setInterval(()=>{if(!document.hidden)void refreshActivity();},60000);
  if(native){window.KyroFeatures.checkUpdate(true);setInterval(()=>window.KyroFeatures.checkUpdate(true),60*1000);window.addEventListener("focus",()=>window.KyroFeatures.checkUpdate(true));}
  try{if(!native){const saved=JSON.parse(localStorage.getItem('kyro-preview-settings')||'null');if(saved)saved&&Object.assign(state.data.settings,saved);}await sync();render();
  if(native){await window.__TAURI__.event.listen('launch-state',e=>{state.launch=e.payload;$('#cancel-launch').hidden=!e.payload.can_cancel;render();});await window.__TAURI__.event.listen('progress',e=>{window.KyroPickers.progress(e.payload.message);if(!state.updateProgress){$('#operation').hidden=true;return;}$('#operation').hidden=false;$('#operation-label').textContent=e.payload.message;const fraction=Number(e.payload.fraction);if(e.payload.fraction!=null&&Number.isFinite(fraction)){const value=Math.max(0,Math.min(1,fraction));$('#operation-progress').value=value;$('#operation-percent').textContent=Math.round(value*100)+'%';}else{$('#operation-progress').removeAttribute('value');$('#operation-percent').textContent='…';}const speed=Number(e.payload.bytes_per_second);$('#operation-speed').hidden=!(Number.isFinite(speed)&&speed>0);$('#operation-speed').textContent='· '+(speed/1048576).toLocaleString(window.KyroI18n.locale(),{maximumFractionDigits:1})+' МБ/с';$('#operation').title=e.payload.message;if(e.payload.message==='Minecraft запущен')$('#cancel-launch').hidden=true;});await window.__TAURI__.event.listen('state-changed',async()=>{await sync();render();});await window.__TAURI__.event.listen('close-blocked',()=>toast('Дождитесь завершения игры или установки.'));

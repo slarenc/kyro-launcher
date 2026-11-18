@@ -11,7 +11,7 @@ use std::{
 };
 
 pub const APPLICATION_ID: &str = "1568628419514863656";
-const ICON: &str = "https://cdn.discordapp.com/app-icons/1568628419514863656/72ec4899b6e52ca72b7c13e42c23b676.png?size=1024";
+const ICON: &str = "https://cdn.discordapp.com/app-icons/1568628419514863656/4edf1fbe7e2cafb9c3166147284b3093.png?size=1024";
 
 fn application_id(settings: &Settings) -> &str {
     let id = settings.discord_application_id.trim();
