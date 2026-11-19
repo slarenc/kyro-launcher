@@ -40,3 +40,5 @@
 !/tools/ui-refinement-smoke.cjs
 
 !/tools/controls-qa.cjs
+
+!/tools/server-widget-test.cjs

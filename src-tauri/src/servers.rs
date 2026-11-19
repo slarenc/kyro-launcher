@@ -189,6 +189,44 @@ async fn srv_endpoint(host: &str, port: u16) -> (String, u16) {
     (host.into(),port)
 }
 
+fn public_hostname(host: &str) -> bool {
+    host.contains('.') && host.parse::<std::net::IpAddr>().is_err()
+        && ![".localhost", ".local", ".lan", ".internal", ".home", ".test"].iter().any(|suffix|host.ends_with(suffix))
+        && host.chars().all(|c|c.is_ascii_alphanumeric() || c == '.' || c == '-')
+}
+
+fn external_status(data: &Value) -> Result<Value, String> {
+    if data["online"] != true { return Err("Резервная проверка не получила онлайн сервера".into()); }
+    let description = data["motd"]["clean"].as_array().map(|rows|rows.iter().filter_map(Value::as_str).collect::<Vec<_>>().join("\n")).unwrap_or_default();
+    Ok(json!({"online":true,"players":data["players"]["online"].as_u64(),"max":data["players"]["max"].as_u64(),
+        "version":data["version"].as_str().unwrap_or(""),"description":description.chars().take(500).collect::<String>(),
+        "icon":data["icon"].as_str().filter(|s|s.len()<512*1024 && s.starts_with("data:image/png;base64,")),
+        "source":"mcsrvstat.us","cachedAt":data["debug"]["cachetime"].as_u64()}))
+}
+
+async fn checked_status(host: &str, port: u16) -> Value {
+    let error = match tokio::time::timeout(Duration::from_secs(6),status(host,port)).await {
+        Ok(Ok(value)) => return value,
+        Ok(Err(error)) => error,
+        Err(_) => "Прямой запрос не получил ответ за 6 секунд".into(),
+    };
+    // Public servers may filter local status probes while accepting game connections.
+    // Ask an independent status service only after the native request failed.
+    if public_hostname(host) {
+        let fallback = async {
+            let response = crate::net::client()?.get(format!("https://api.mcsrvstat.us/3/{host}:{port}"))
+                .timeout(Duration::from_secs(5)).send().await.map_err(|e|e.to_string())?
+                .error_for_status().map_err(|e|e.to_string())?;
+            let bytes=response.bytes().await.map_err(|e|e.to_string())?;
+            if bytes.len()>1024*1024 { return Err("Слишком большой ответ проверки".into()); }
+            let data:Value=serde_json::from_slice(&bytes).map_err(|e|e.to_string())?;
+            external_status(&data)
+        };
+        if let Ok(Ok(value))=tokio::time::timeout(Duration::from_secs(5),fallback).await { return value; }
+    }
+    json!({"online":false,"error":error})
+}
+
 pub async fn server_status(state: &State, id: String) -> Result<Value, String> {
     let server = state
         .data
@@ -200,13 +238,7 @@ pub async fn server_status(state: &State, id: String) -> Result<Value, String> {
         .cloned()
         .ok_or("Сервер не найден")?;
     let (host, port) = address(&server.address)?;
-    Ok(
-        match tokio::time::timeout(Duration::from_secs(6), status(&host, port)).await {
-            Ok(Ok(v)) => v,
-            Ok(Err(e)) => json!({"online":false,"error":e}),
-            Err(_) => json!({"online":false,"error":"Сервер не ответил за 6 секунд"}),
-        },
-    )
+    Ok(checked_status(&host, port).await)
 }
 
 pub fn save_server(state: &State, name: String, address: String) -> Result<(), String> {
@@ -299,6 +331,21 @@ pub fn connect_args(version: &str, raw: &str) -> Result<Vec<String>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn external_status_needs_confirmation_and_keeps_server_data() {
+        assert!(external_status(&json!({"online":false})).is_err());
+        let value=external_status(&json!({"online":true,"players":{"online":68,"max":2026},"version":"1.21.11","motd":{"clean":["VirtusMine"]},"icon":"https://invalid/icon","debug":{"cachetime":123}})).unwrap();
+        assert_eq!(value["players"],68);assert_eq!(value["description"],"VirtusMine");assert!(value["icon"].is_null());assert_eq!(value["source"],"mcsrvstat.us");
+        for host in ["localhost","server.local","127.0.0.1","::1","192.168.1.1","server.lan","server.internal","server.home","x/#"] { assert!(!public_hostname(host)); }
+        assert!(public_hostname("virtusmine.ru"));
+    }
+    #[tokio::test]
+    #[ignore = "requires live VirtusMine server and status service"]
+    async fn live_virtusmine_status() {
+        let value=checked_status("virtusmine.ru",25565).await;
+        assert_eq!(value["online"],true,"{value}");assert!(value["players"].as_u64().is_some());assert!(value["icon"].as_str().is_some());
+        println!("VirtusMine: online={}, players={}, source={}",value["online"],value["players"],value["source"]);
+    }
     #[tokio::test]
     #[ignore = "requires live Minecraft servers"]
     async fn live_server_icons() {
