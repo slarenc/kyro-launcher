@@ -60,3 +60,6 @@ tasks.register('glSmoke',JavaExec) {
 }
 tasks.register('accountsTest',JavaExec){dependsOn testClasses;classpath=sourceSets.test.runtimeClasspath;mainClass='ru.kyro.hud.AccountMenuTest';systemProperty 'java.awt.headless','true'}
 tasks.named('check'){dependsOn 'accountsTest'}
+
+tasks.register('handScaleTest',JavaExec){dependsOn testClasses;classpath=sourceSets.test.runtimeClasspath;mainClass='ru.kyro.hud.HandScaleTest';systemProperty 'java.awt.headless','true'}
+tasks.named('check'){dependsOn 'handScaleTest'}

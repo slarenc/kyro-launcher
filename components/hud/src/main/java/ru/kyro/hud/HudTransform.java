@@ -13,8 +13,27 @@ final class HudTransform implements ClassFileTransformer {
         try{Class<?> hooks=Class.forName("ru.kyro.builtin.CooldownHooks",true,null);gameModeClass=(String)hooks.getMethod("gameModeClass").invoke(null);useItemMethod=(String)hooks.getMethod("useMethod").invoke(null);useItemOnMethod=(String)hooks.getMethod("useOnMethod").invoke(null);componentClass=(String)hooks.getMethod("componentClass").invoke(null);guiClass=(String)hooks.getMethod("guiClass").invoke(null);}catch(Exception ignored){}
         try{Class<?> hooks=Class.forName("ru.kyro.builtin.SkyHooks",true,null);skyProbeClass=(String)hooks.getMethod("probeClass").invoke(null);skyValueMethod=(String)hooks.getMethod("valueMethod").invoke(null);}catch(Exception ignored){}
     }
+    final String handClass=handAlias("moduleClasses","net.minecraft.client.renderer.ItemInHandRenderer");
+    static String handAlias(String group,String key){try{return (String)Class.forName("ru.kyro.builtin.HandHooks",true,null).getMethod("alias",String.class,String.class).invoke(null,group,key);}catch(Exception ignored){return "";}}
+    static boolean handMethod(String name,String key,String...defaults){for(String n:defaults)if(name.equals(n))return true;try{for(String n:(String[])Class.forName("ru.kyro.builtin.HandHooks",true,null).getMethod("methods",String.class).invoke(null,key))if(name.equals(n))return true;}catch(Exception ignored){}return false;}
+    byte[] hands(byte[] bytes){
+        try{ClassReader reader=new ClassReader(bytes);ClassWriter writer=new ClassWriter(reader,ClassWriter.COMPUTE_MAXS);
+            reader.accept(new ClassVisitor(Opcodes.ASM9,writer){public MethodVisitor visitMethod(int access,String method,String desc,String signature,String[] exceptions){
+                MethodVisitor original=super.visitMethod(access,method,desc,signature,exceptions);
+                if((access&(Opcodes.ACC_STATIC|Opcodes.ACC_NATIVE|Opcodes.ACC_ABSTRACT))!=0||!handMethod(method,"net.minecraft.client.renderer.ItemInHandRenderer#renderArmWithItem","renderArmWithItem","renderFirstPersonItem","method_3228"))return original;
+                Type[] args=Type.getArgumentTypes(desc);if(args.length<8||args[0].getSort()!=Type.OBJECT||args[3].getSort()!=Type.OBJECT||args[7].getSort()!=Type.OBJECT)return original;
+                int[] slots=new int[args.length];int slot=1;for(int i=0;i<args.length;i++){slots[i]=slot;slot+=args[i].getSize();}
+                return new MethodVisitor(Opcodes.ASM9,original){boolean applied;
+                    public void visitMethodInsn(int opcode,String owner,String name,String descriptor,boolean itf){super.visitMethodInsn(opcode,owner,name,descriptor,itf);
+                        if(!applied&&owner.equals(args[7].getInternalName())&&descriptor.equals("()V")&&handMethod(name,"com.mojang.blaze3d.vertex.PoseStack#pushPose","pushPose","push","method_22903")){applied=true;mv.visitVarInsn(Opcodes.ALOAD,slots[7]);mv.visitVarInsn(Opcodes.ALOAD,slots[0]);mv.visitVarInsn(Opcodes.ALOAD,slots[3]);mv.visitMethodInsn(Opcodes.INVOKESTATIC,"ru/kyro/builtin/HandHooks","apply","(Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;)V",false);}
+                    }
+                };
+            }},0);return writer.toByteArray();
+        }catch(Throwable error){System.err.println("[KYRO HUD] Hand size hook failed: "+error);return null;}
+    }
     boolean text(String name){return name.equals(textClass)||name.equals("net/minecraft/util/StringDecomposer")||name.equals("net/minecraft/text/TextVisitFactory")||name.equals("net/minecraft/class_5223")||name.equals("net/minecraft/util/text/TextProcessing");}
     public byte[] transform(ClassLoader loader,String name,Class<?> type,ProtectionDomain domain,byte[] bytes){
+        if(name.equals(handClass)||name.equals("net/minecraft/client/renderer/ItemInHandRenderer")||name.equals("net/minecraft/client/render/item/HeldItemRenderer")||name.equals("net/minecraft/class_759"))return hands(bytes);
         if(name.equals("org/lwjgl/sdl/SDLVideo")||name.equals("org/lwjgl/sdl/SDLEvents"))return sdl(name,bytes);
         if(name.equals(skyProbeClass)||name.equals("net/minecraft/world/attribute/EnvironmentAttributeProbe")||name.equals("net/minecraft/class_12202"))return sky(bytes);
         if(name.equals(gameModeClass)||name.equals("net/minecraft/client/multiplayer/MultiPlayerGameMode")||name.equals("net/minecraft/client/network/ClientPlayerInteractionManager")||name.equals("net/minecraft/class_636"))return cooldown(bytes);

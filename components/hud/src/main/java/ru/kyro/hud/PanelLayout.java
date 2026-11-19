@@ -22,6 +22,8 @@ public final class PanelLayout {
     public double skyMix=.65,skyFogMix=.5,skyCloudMix=.35;
     static double strength(double value){return Double.isFinite(value)?Math.max(0,Math.min(1,value)):.5;}
     public boolean expandOnHover=true,announceTracks=true;
+    public double rightHandScale=1,leftHandScale=1;
+    public static double handScale(double value){return Double.isFinite(value)?Math.max(.2,Math.min(1,value)):1;}
     public double musicScale=.65;
     public int cooldownSizeRevision=1;public double cooldownScale=.7;
     public double cooldownScale(){return Double.isFinite(cooldownScale)?Math.max(.2,Math.min(1.5,cooldownScale)):.7;}
@@ -60,6 +62,7 @@ public final class PanelLayout {
         result.cooldownScale=result.cooldownScale();
         java.util.List<CooldownRule> rules=new java.util.ArrayList<>();if(result.cooldownRules!=null)for(CooldownRule rule:result.cooldownRules)if(rule!=null&&rule.key!=null&&!rule.key.isEmpty()&&rule.key.length()<=4096&&rule.label!=null&&!rule.label.trim().isEmpty()&&rule.label.length()<=256&&Double.isFinite(rule.seconds)&&rule.seconds>0&&rule.seconds<=86400&&rules.size()<24)rules.add(rule);result.cooldownRules=rules;
         result.infoScale=result.infoScale();
+        result.rightHandScale=handScale(result.rightHandScale);result.leftHandScale=handScale(result.leftHandScale);
         return result;
     }
     static double sane(double value){return Double.isFinite(value)?Math.max(0,Math.min(1,value)):.02;}
