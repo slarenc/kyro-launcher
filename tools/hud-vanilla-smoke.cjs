@@ -2,6 +2,7 @@
 const fs=require('node:fs'),path=require('node:path'),{spawn}=require('node:child_process');
 const root=path.resolve(__dirname,'..');
 (async()=>{
+ const handQa=process.env.KYRO_HAND_QA==='1';
  const skyQa=process.env.KYRO_SKY_QA==='1',moduleQa=process.env.KYRO_MODULE_QA==='1',fabricQa=process.env.KYRO_FABRIC_QA==='1',scenarioQa=process.env.KYRO_SCENARIO_QA==='1',layoutQa=process.env.KYRO_LAYOUT_QA==='1';
  const cache=process.env.KYRO_TEST_CACHE||path.join(process.env.LOCALAPPDATA,'KyroLauncher');
  const metadata=process.env.KYRO_TEST_META||path.join(process.env.USERPROFILE,'.gradle/caches/fabric-loom/1.21.11/mojang_minecraft_info.json');
@@ -22,6 +23,7 @@ const root=path.resolve(__dirname,'..');
  fs.writeFileSync(path.join(fixture,'config/kyro-panels.json'),JSON.stringify({musicX:.7,musicY:.7,infoScale:.8,musicScale:.65,...(skyQa?{customSky:true,skyUseThemeColor:false,skyColor:0x8849cd,skyMix:.9,skyCloudColor:0xc4a0ed,skyCloudMix:.75}:{} )}));
  if(moduleQa){const mappingFile=process.env.KYRO_TEST_MAPPING||path.join(root,crossVersion?'target/hud-compatibility/'+v.id+'/mapping.json':'target/module-mappings-qa.json');fs.writeFileSync(path.join(fixture,'config/kyro-hud-mapping.json'),fs.existsSync(mappingFile)?fs.readFileSync(mappingFile):'{}');const ids=['chatStack','chatTime','numberFormat','combatGuard','containerPeek','outline','fullbright','healthTag','sparks','inventory','handScale','jumpOrbit','clearFlame','motionBlur','effects','selfTag','shield','totems'];const modules=Object.fromEntries(ids.map((id,i)=>[id,{enabled:true,amount:.7,scale:.65,x:id==='effects'?.8:.02,y:id==='effects'?.2:id==='totems'?.75:.32,key:-1,color:0xb99afa}]));fs.writeFileSync(path.join(fixture,'config/kyro-panels.json'),JSON.stringify({moduleRevision:1,modules,cooldownScale:.4,infoScale:.65,musicScale:.5}));}
 
+ if(handQa)fs.copyFileSync(path.join(root,'target/hud-compatibility',v.id,'mapping.json'),path.join(fixture,'config/kyro-hud-mapping.json'));
  // A private datapack in the copied QA world prints a sample nickname in real chat.
  const data=path.join(world,'datapacks/kyro-badge-qa');for(const dir of ['data/minecraft/tags/function','data/kyro/function'])fs.mkdirSync(path.join(data,dir),{recursive:true});
  fs.writeFileSync(path.join(data,'pack.mcmeta'),JSON.stringify(packMetadata(typeof versionInfo.pack_version.data==='number'?versionInfo.pack_version.data:versionInfo.pack_version.data_major,'Private KYRO badge check')));
@@ -29,8 +31,9 @@ const root=path.resolve(__dirname,'..');
  const objective='kq'+Date.now().toString(36),once=`execute as @a[tag=!${tag}] run `;
  const scenarioCommands=scenarioQa?`${once}gamemode creative @s\n${once}item replace entity @s weapon.offhand with minecraft:shield\n${once}give @s minecraft:shulker_box[container=[{slot:0,item:{id:"minecraft:diamond",count:4}}]]\n`:'';
  const moduleCommands=moduleQa?`${once}give @s minecraft:totem_of_undying 3\n${once}effect give @s minecraft:speed 100 0 true\n${once}tellraw @s {"text":"Balance 1000000"}\n${once}tellraw @s {"text":"Balance 1000000"}\n`:'';
+ const handCommands=handQa?`${once}gamemode creative @s\n${once}item replace entity @s weapon.mainhand with minecraft:diamond_sword\n${once}item replace entity @s weapon.offhand with minecraft:shield\n${once}tp @s 8 100 8 0 -10\n${once}time set 6000\n${once}weather clear\n`:'';
  const skyCommands=skyQa?`${once}time set 6000\n${once}weather clear\n${once}gamemode spectator @s\n${once}tp @s 8 100 8 0 -20\n`:'';
- fs.writeFileSync(path.join(data,'data/kyro/function/tick.mcfunction'),`${once}scoreboard objectives add ${objective} dummy\n${once}scoreboard players set KyroBuiltinQA ${objective} 1\n${once}scoreboard objectives setdisplay sidebar ${objective}\n${once}tellraw @s {"text":"<KyroBuiltinQA> KYRO name badge check","color":"gold","bold":true}\n${skyCommands}${moduleCommands}${scenarioCommands}tag @a add ${tag}\n`);
+ fs.writeFileSync(path.join(data,'data/kyro/function/tick.mcfunction'),`${once}scoreboard objectives add ${objective} dummy\n${once}scoreboard players set KyroBuiltinQA ${objective} 1\n${once}scoreboard objectives setdisplay sidebar ${objective}\n${once}tellraw @s {"text":"<KyroBuiltinQA> KYRO name badge check","color":"gold","bold":true}\n${handCommands}${skyCommands}${moduleCommands}${scenarioCommands}tag @a add ${tag}\n`);
  function allowed(item){let yes=true;if(item.rules){yes=false;for(const rule of item.rules){if(rule.features)continue;const os=rule.os;if(os?.name&&os.name!=='windows'||os?.arch&&os.arch!=='x86_64')continue;yes=rule.action==='allow';}}return yes;}
  const cp=[];for(const lib of v.libraries.filter(allowed)){const artifact=lib.downloads?.artifact;if(!artifact)continue;const file=path.join(cache,'libraries',artifact.path);if(!fs.existsSync(file))throw Error('Missing cached library '+file);cp.push(file);}
  const jar=path.join(cache,'versions',v.id,v.id+'.jar');if(!fs.existsSync(jar))throw Error('Missing cached vanilla client');cp.push(jar);
@@ -39,12 +42,13 @@ const root=path.resolve(__dirname,'..');
  const vars={natives_directory:natives,launcher_name:'KYRO',launcher_version:'QA',classpath:cp.join(path.delimiter),library_directory:path.join(cache,'libraries'),classpath_separator:path.delimiter};
  const expand=s=>s.replace(/\$\{([^}]+)\}/g,(_,name)=>{if(vars[name]===undefined)throw Error('Unknown JVM token '+name);return vars[name];});
  const args=['-Xmx1G','-Xms256M'];for(const item of v.arguments.jvm){if(typeof item==='string')args.push(expand(item));else if(allowed(item))for(const value of Array.isArray(item.value)?item.value:[item.value])args.push(expand(value));}
- const reports=path.join(root,process.env.KYRO_ACCOUNTS_QA?'output/hud-accounts-qa':crossVersion?'output/hud-agent-'+v.id:layoutQa?'output/hud-agent-layout':fabricQa?'output/hud-agent-modules-fabric':moduleQa?'output/hud-agent-modules':skyQa?'output/hud-agent-sky':'output/hud-agent-vanilla');fs.mkdirSync(reports,{recursive:true});
+ const reports=path.join(root,handQa?'output/hud-hands-'+(fabricQa?'fabric-':'vanilla-')+v.id:process.env.KYRO_ACCOUNTS_QA?'output/hud-accounts-qa':crossVersion?'output/hud-agent-'+v.id:layoutQa?'output/hud-agent-layout':fabricQa?'output/hud-agent-modules-fabric':moduleQa?'output/hud-agent-modules':skyQa?'output/hud-agent-sky':'output/hud-agent-vanilla');fs.mkdirSync(reports,{recursive:true});
  args.push('-javaagent:'+path.join(root,'src-tauri/resources/kyro-hud-agent.jar'),'-Dkyro.hud.player=KyroBuiltinQA','-Dkyro.hud.config='+path.join(fixture,'config'),'-Dkyro.hud.media='+path.join(root,'src-tauri/resources/kyro-media.exe'),'-Dkyro.hud.agentPreview=true','-Dkyro.hud.previewHidden=true','-Dkyro.hud.requireWorld=true','-Dkyro.hud.capture='+reports);
  if(process.env.KYRO_ACCOUNTS_QA){fs.copyFileSync(path.join(root,'target/module-mappings-qa.json'),path.join(fixture,'config/kyro-hud-mapping.json'));args.push('-Dkyro.accounts.root='+process.env.KYRO_ACCOUNTS_QA,'-Dkyro.accounts.session=qa-client','-Dkyro.accounts.preview=true','-Dkyro.hud.uuid=24c15bb2a67a3fe6ad4843b13d57eb10');}
  if(scenarioQa||layoutQa)args.push('-javaagent:'+path.join(root,'components/hud/build/libs/kyro-module-scenario.jar'));
  if(layoutQa)args.push('-Dkyro.hud.layoutScenario=true');
  if(moduleQa)args.push('-Dkyro.hud.modulesTrace=true');
+ if(handQa)args.push('-Dkyro.hud.handPreview=true','-Dkyro.hud.handTrace=true');
  if(skyQa)args.push('-Dkyro.hud.skyTrace=true');
  args.push(fabricQa?'net.fabricmc.loader.impl.launch.knot.KnotClient':v.mainClass,'--username','KyroBuiltinQA','--version',v.id,'--gameDir',fixture,'--assetsDir',path.join(cache,'assets'),'--assetIndex',v.assetIndex.id,'--uuid','24c15bb2a67a3fe6ad4843b13d57eb10','--accessToken','0','--userType','legacy','--versionType','release','--width','1280','--height','720','--quickPlaySingleplayer','KYRO HUD QA');
  const log=fs.openSync(path.join(reports,'game.log'),'w');const java=process.env.KYRO_TEST_JAVA||'C:/Program Files/Eclipse Adoptium/jdk-21.0.13.9-hotspot/bin/java.exe';
@@ -54,6 +58,7 @@ const root=path.resolve(__dirname,'..');
  if(text.includes('Overlay disabled after a rendering error')||text.includes('Input dispatch failed'))throw Error('HUD runtime error in vanilla');
  if(!text.split('\n').some(line=>line.includes('Reloading ResourceManager:')&&line.includes('file/kyro-badge')&&line.includes('file/server-font-qa'))||text.includes("Couldn't load file/kyro-badge pack metadata")||text.includes('Removed resource pack file/kyro-badge')||text.includes('Unknown font: kyro:badge'))throw Error('The production-generated badge pack was rejected by Minecraft');
  if(skyQa&&(!text.includes('Custom Sky applied SKY')||!text.includes('Custom Sky applied FOG')||text.includes('Custom Sky hook failed')))throw Error('Custom Sky did not change real game environment colours');
+ if(handQa&&(!text.includes('Hand size applied: RIGHT')||!text.includes('Hand size applied: LEFT')))throw Error('Both hand transforms must execute in the real game');
  if(moduleQa&&(!text.includes('Chat modules applied: time=true, repeats=2')||!text.includes('Module HUD verified: slots=36')||text.includes('modules unavailable')||text.includes('Module hooks unavailable')))throw Error('Module game verification failed; inspect game.log');
  if(scenarioQa&&!text.includes('[KYRO SCENARIO] PASS: ALL SCENARIOS'))throw Error('Module scenarios failed; inspect game.log');
  console.log('PASS: '+(fabricQa?'Fabric ':'official vanilla ')+v.id+', copied world, no loader or HUD mod, built-in renderer and editor, screenshots.');

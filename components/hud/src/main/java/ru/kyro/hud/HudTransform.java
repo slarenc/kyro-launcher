@@ -25,7 +25,7 @@ final class HudTransform implements ClassFileTransformer {
                 int[] slots=new int[args.length];int slot=1;for(int i=0;i<args.length;i++){slots[i]=slot;slot+=args[i].getSize();}
                 return new MethodVisitor(Opcodes.ASM9,original){boolean applied;
                     public void visitMethodInsn(int opcode,String owner,String name,String descriptor,boolean itf){super.visitMethodInsn(opcode,owner,name,descriptor,itf);
-                        if(!applied&&owner.equals(args[7].getInternalName())&&descriptor.equals("()V")&&handMethod(name,"com.mojang.blaze3d.vertex.PoseStack#pushPose","pushPose","push","method_22903")){applied=true;mv.visitVarInsn(Opcodes.ALOAD,slots[7]);mv.visitVarInsn(Opcodes.ALOAD,slots[0]);mv.visitVarInsn(Opcodes.ALOAD,slots[3]);mv.visitMethodInsn(Opcodes.INVOKESTATIC,"ru/kyro/builtin/HandHooks","apply","(Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;)V",false);}
+                        if(!applied&&owner.equals(args[7].getInternalName())&&descriptor.equals("()V")&&handMethod(name,"com.mojang.blaze3d.vertex.PoseStack#pushPose","pushPose","push","method_22903")){applied=true;System.out.println("[KYRO HUD] Hand size hook: "+reader.getClassName()+"."+method+desc);mv.visitVarInsn(Opcodes.ALOAD,slots[7]);mv.visitVarInsn(Opcodes.ALOAD,slots[0]);mv.visitVarInsn(Opcodes.ALOAD,slots[3]);mv.visitMethodInsn(Opcodes.INVOKESTATIC,"ru/kyro/builtin/HandHooks","apply","(Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;)V",false);}
                     }
                 };
             }},0);return writer.toByteArray();

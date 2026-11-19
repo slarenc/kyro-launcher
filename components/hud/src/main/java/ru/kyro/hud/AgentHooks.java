@@ -69,6 +69,7 @@ public final class AgentHooks {
             boolean preview=Boolean.getBoolean("kyro.hud.agentPreview");
             if(preview&&Boolean.getBoolean("kyro.hud.previewHidden")&&!previewHidden){window("glfwHideWindow",new Class<?>[]{long.class},window);previewHidden=true;}
             if(preview&&Boolean.getBoolean("kyro.hud.requireWorld")&&!game.world)return;
+            if(preview&&Boolean.getBoolean("kyro.hud.handPreview")&&!HandHooks.previewReady()){previewStart=0;return;}
             if(!game.world&&!preview){cooldownReader.sample(null);CooldownHooks.reset();cooldownRows=Collections.emptyList();}
             if(!preview&&game.loading()){ready=false;if(editor)setEditor(false);return;}
             if(now-cooldownAt>=50_000_000L){cooldownAt=now;cooldownRows=CooldownHooks.merge(game.localPlayer,cooldownReader.sample(game.localPlayer));}
@@ -83,7 +84,7 @@ public final class AgentHooks {
             boolean free=cursor()!=212995;
             if(editor&&!free){cursor(212993);free=true;}
             PanelPainter.Track track=media.snapshot();double musicScale=layout.musicScale();hot=free&&inside(mouseX,mouseY,musicX,musicY,272*musicScale,musicHeight);
-            if(preview){if(previewStart==0)previewStart=now;double elapsed=(now-previewStart)/1e9;if(elapsed>6)hot=true;if(elapsed>10&&!editor){setEditor(true);if(Boolean.getBoolean("kyro.accounts.preview"))AccountMenu.enter();}}
+            if(preview){if(previewStart==0)previewStart=now;double elapsed=(now-previewStart)/1e9;if(elapsed>6)hot=true;if(Boolean.getBoolean("kyro.hud.handPreview")){layout.rightHandScale=elapsed>6?.4:1;layout.leftHandScale=elapsed>6?.4:1;}if(elapsed>10&&!editor){setEditor(true);if(Boolean.getBoolean("kyro.accounts.preview"))AccountMenu.enter();}}
             double target=track.available()&&((layout.expandOnHover&&hot)||layout.announceTracks&&media.trackSeconds()<3.2||holding!=0||seek>=0&&free)?1:0;
             double dt=lastFrame==0?1/60.0:Math.min(.1,(now-lastFrame)/1e9);lastFrame=now;expand+=(target-expand)*(1-Math.exp(-dt*12));if(Math.abs(target-expand)<.002)expand=target;
             musicHeight=(48+68*expand)*musicScale;musicX=x(layout.musicX,layout.musicWidth());musicY=Math.min(y(layout.musicY,layout.musicHeight()),Math.max(0,guiHeight-musicHeight-8));
