@@ -2,7 +2,7 @@ package ru.kyro.hud;
 import com.google.gson.*;
 import java.lang.reflect.*;
 import java.util.*;
-/** First-person hand transforms, inside the game's own push/pop scope. */
+/** First-person item transforms; player arm geometry is never scaled. */
 public final class HandHooks {
     public static String alias(String group,String key){try{return BadgeHooks.MAPPINGS.getAsJsonObject(group).get(key).getAsString().replace('.','/');}catch(Exception ignored){return "";}}
     public static String[] methods(String key){try{JsonArray a=BadgeHooks.MAPPINGS.getAsJsonObject("moduleMembers").getAsJsonArray(key);String[] out=new String[a.size()];for(int i=0;i<out.length;i++)out[i]=a.get(i).getAsString();return out;}catch(Exception ignored){return new String[0];}}
@@ -23,7 +23,6 @@ public final class HandHooks {
     static final Object NO_POSE=new Object();
     static final ThreadLocal<Deque<Object>> ACTIVE=ThreadLocal.withInitial(ArrayDeque::new);
     static void scope(Object pose){try{stack(pose,true);ACTIVE.get().push(pose);}catch(Throwable error){ACTIVE.get().push(NO_POSE);AgentHooks.log("Hand size scope failed",error);}}
-    public static void beginSide(Object pose,boolean right){scope(pose);try{if(ACTIVE.get().peek()!=NO_POSE)scale(pose,right);}catch(Throwable error){AgentHooks.log("Hand size transform failed",error);}}
     public static void beginContext(Object pose,Object context){scope(pose);try{if(context instanceof Enum&&ACTIVE.get().peek()!=NO_POSE){int value=((Enum<?>)context).ordinal();if(value==3||value==4)scale(pose,value==4);}}catch(Throwable error){AgentHooks.log("Hand size transform failed",error);}}
     public static void end(){Deque<Object> scopes=ACTIVE.get();if(scopes.isEmpty())return;Object pose=scopes.pop();try{if(pose!=NO_POSE)stack(pose,false);}catch(Throwable error){AgentHooks.log("Hand size restore failed",error);}}
     static void scale(Object pose,boolean right)throws Exception{PanelLayout settings=AgentHooks.layout;if(settings==null)return;

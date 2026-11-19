@@ -23,16 +23,12 @@ final class HudTransform implements ClassFileTransformer {
                 Type[] args=Type.getArgumentTypes(desc);String poseClass=handAlias("moduleClasses","com.mojang.blaze3d.vertex.PoseStack");int pose=-1;
                 for(int i=0;i<args.length;i++)if(args[i].getSort()==Type.OBJECT){String n=args[i].getInternalName();if(n.equals(poseClass)||n.equals("com/mojang/blaze3d/vertex/PoseStack")||n.equals("net/minecraft/class_4587")||n.equals("net/minecraft/client/util/math/MatrixStack"))pose=i;}
                 if(pose<0)return original;
-                boolean player=reader.getClassName().equals(handAlias("moduleClasses","net.minecraft.client.renderer.entity.player.PlayerRenderer"))||reader.getClassName().equals("net/minecraft/class_1007")||reader.getClassName().endsWith("/PlayerRenderer")||reader.getClassName().endsWith("/PlayerEntityRenderer");
-                boolean handSignature=pose==0&&(args.length==4||args.length==5)&&args[2].equals(Type.INT_TYPE);
-                boolean right=player&&handSignature&&handMethod(method,"net.minecraft.client.renderer.entity.player.PlayerRenderer#renderRightHand","renderRightHand","renderRightArm","method_4220");
-                boolean left=player&&handSignature&&handMethod(method,"net.minecraft.client.renderer.entity.player.PlayerRenderer#renderLeftHand","renderLeftHand","renderLeftArm","method_4221");
-                boolean item=!player&&args.length>=6&&args[2].getSort()==Type.OBJECT&&handMethod(method,"net.minecraft.client.renderer.ItemInHandRenderer#renderItem","renderItem","method_3233");
-                if(!item&&!right&&!left)return original;
+                boolean item=args.length>=6&&args[2].getSort()==Type.OBJECT&&handMethod(method,"net.minecraft.client.renderer.ItemInHandRenderer#renderItem","renderItem","method_3233");
+                if(!item)return original;
                 int[] slots=new int[args.length];int slot=1;for(int i=0;i<args.length;i++){slots[i]=slot;slot+=args[i].getSize();}final int poseSlot=slots[pose];
                 System.out.println("[KYRO HUD] Anchored hand size hook: "+reader.getClassName()+"."+method+desc);
                 return new MethodVisitor(Opcodes.ASM9,original){final Label start=new Label(),end=new Label(),handler=new Label();
-                    public void visitCode(){super.visitCode();mv.visitVarInsn(Opcodes.ALOAD,poseSlot);if(item){mv.visitVarInsn(Opcodes.ALOAD,slots[2]);mv.visitMethodInsn(Opcodes.INVOKESTATIC,"ru/kyro/builtin/HandHooks","beginContext","(Ljava/lang/Object;Ljava/lang/Object;)V",false);}else{mv.visitInsn(right?Opcodes.ICONST_1:Opcodes.ICONST_0);mv.visitMethodInsn(Opcodes.INVOKESTATIC,"ru/kyro/builtin/HandHooks","beginSide","(Ljava/lang/Object;Z)V",false);}mv.visitLabel(start);}
+                    public void visitCode(){super.visitCode();mv.visitVarInsn(Opcodes.ALOAD,poseSlot);mv.visitVarInsn(Opcodes.ALOAD,slots[2]);mv.visitMethodInsn(Opcodes.INVOKESTATIC,"ru/kyro/builtin/HandHooks","beginContext","(Ljava/lang/Object;Ljava/lang/Object;)V",false);mv.visitLabel(start);}
                     public void visitInsn(int opcode){if(opcode>=Opcodes.IRETURN&&opcode<=Opcodes.RETURN)mv.visitMethodInsn(Opcodes.INVOKESTATIC,"ru/kyro/builtin/HandHooks","end","()V",false);super.visitInsn(opcode);}
                     public void visitMaxs(int stack,int locals){mv.visitLabel(end);mv.visitTryCatchBlock(start,end,handler,"java/lang/Throwable");mv.visitLabel(handler);mv.visitFrame(Opcodes.F_FULL,0,new Object[0],1,new Object[]{"java/lang/Throwable"});mv.visitMethodInsn(Opcodes.INVOKESTATIC,"ru/kyro/builtin/HandHooks","end","()V",false);mv.visitInsn(Opcodes.ATHROW);super.visitMaxs(stack,locals);}
                 };
@@ -41,7 +37,6 @@ final class HudTransform implements ClassFileTransformer {
     }
     boolean text(String name){return name.equals(textClass)||name.equals("net/minecraft/util/StringDecomposer")||name.equals("net/minecraft/text/TextVisitFactory")||name.equals("net/minecraft/class_5223")||name.equals("net/minecraft/util/text/TextProcessing");}
     public byte[] transform(ClassLoader loader,String name,Class<?> type,ProtectionDomain domain,byte[] bytes){
-        if(name.equals(handAlias("moduleClasses","net.minecraft.client.renderer.entity.player.PlayerRenderer"))||name.equals("net/minecraft/class_1007")||name.equals("net/minecraft/client/renderer/entity/player/PlayerRenderer")||name.equals("net/minecraft/client/render/entity/PlayerEntityRenderer"))return hands(bytes);
         if(name.equals(handClass)||name.equals("net/minecraft/client/renderer/ItemInHandRenderer")||name.equals("net/minecraft/client/render/item/HeldItemRenderer")||name.equals("net/minecraft/class_759"))return hands(bytes);
         if(name.equals("org/lwjgl/sdl/SDLVideo")||name.equals("org/lwjgl/sdl/SDLEvents"))return sdl(name,bytes);
         if(name.equals(skyProbeClass)||name.equals("net/minecraft/world/attribute/EnvironmentAttributeProbe")||name.equals("net/minecraft/class_12202"))return sky(bytes);

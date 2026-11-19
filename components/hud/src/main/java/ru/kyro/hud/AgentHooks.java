@@ -125,7 +125,7 @@ public final class AgentHooks {
         PanelPainter.text(g,"Размер КД · "+Math.round(layout.cooldownScale()*100)+"%",20,197,202,10,PanelPainter.QUIET,0,false);
         g.setColor(PanelPainter.ink(18));g.fillRoundRect(234,192,28,24,8,8);g.fillRoundRect(272,192,28,24,8,8);PanelPainter.text(g,"−",243,194,18,14,PanelPainter.WHITE,0,true);PanelPainter.text(g,"+",280,194,18,14,PanelPainter.WHITE,0,true);
         button(g,12,220,"Custom Sky",layout.customSky);action(g,164,220,"Настроить ›");
-        handRow(g,248,"Правая рука",layout.rightHandScale);handRow(g,276,"Левая рука",layout.leftHandScale);
+        handRow(g,248,"Предмет справа",layout.rightHandScale);handRow(g,276,"Предмет слева",layout.leftHandScale);
         PanelPainter.text(g,"Сбросить позиции",18,310,145,9,PanelPainter.WHITE,0,false);PanelPainter.text(g,"Готово",252,310,55,9,PanelPainter.ACCENT,0,true);g.dispose();return image;
     }
     static void handRow(Graphics2D g,int y,String name,double value){
