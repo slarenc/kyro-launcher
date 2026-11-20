@@ -12,6 +12,7 @@ final class AgentGame {
     private Object client;private ClassLoader loader;private List<Field> players;Object localPlayer;
     private String clientClass="",playerField="",latencyField="",optionsName="",hideName="";
     private Field optionsField,hiddenField;private long optionsRetry;
+    private Object pingConnection,pingPlayer;private long pingAt;
     private long retryAt;boolean world;String ping="— ms";
     AgentGame(){
         try{Path file=Paths.get(System.getProperty("kyro.hud.config","config")).resolve("kyro-hud-mapping.json");JsonObject map=new Gson().fromJson(new String(Files.readAllBytes(file),StandardCharsets.UTF_8),JsonObject.class);
@@ -48,22 +49,33 @@ final class AgentGame {
             if(client==null){world=false;return;}
             Object player=null;
             for(Field f:players){Object value=f.get(client);if(value!=null){player=value;break;}}
-            localPlayer=player;world=player!=null;ping="— ms";if(!world){if(AgentHooks.presence!=null)AgentHooks.presence.game(false,null,null);return;}
+            localPlayer=player;world=player!=null;if(!world){ping="— ms";pingConnection=null;pingPlayer=null;pingAt=0;if(AgentHooks.presence!=null)AgentHooks.presence.game(false,null,null);return;}
             Object connection=call(client,new String[]{"getConnection","getNetworkHandler","getNetHandler","func_147114_u","method_1562",BadgeHooks.mapped("clientConnectionMethod")});
             if(connection==null){for(Method m:client.getClass().getDeclaredMethods())if(m.getParameterTypes().length==0&&!m.getReturnType().isPrimitive()&&hasLookup(m.getReturnType())){m.setAccessible(true);connection=m.invoke(client);if(connection!=null)break;}}
             Object uuid=call(player,new String[]{"getUUID","getUuid","getUniqueID","func_110124_au","method_5667"});
             if(!(uuid instanceof UUID))for(Method m:player.getClass().getMethods())if(m.getParameterTypes().length==0&&m.getReturnType()==UUID.class){uuid=m.invoke(player);break;}
             if(AgentHooks.presence!=null)AgentHooks.presence.game(true,connection,uuid);
             Object single=call(client,new String[]{"isInSingleplayer","isLocalServer","func_71356_B","method_1542"});if(Boolean.TRUE.equals(single)){ping="LOCAL";return;}
+            if(connection!=pingConnection||player!=pingPlayer){ping="— ms";pingAt=0;pingConnection=connection;pingPlayer=player;}
+            if(System.nanoTime()-pingAt>5_000_000_000L)ping="— ms";
             if(!(uuid instanceof UUID))return;
             if(connection==null)return;
-            Object entry=null;
-            for(Method m:connection.getClass().getMethods())if(Arrays.equals(m.getParameterTypes(),new Class<?>[]{UUID.class})&&!m.getReturnType().isPrimitive()){entry=m.invoke(connection,uuid);if(entry!=null)break;}
-            if(entry==null)return;
-            Object latency=call(entry,new String[]{"getLatency","getResponseTime","func_178853_c","method_2959"});
-            if(!(latency instanceof Number))for(String name:new String[]{latencyField,"latency","responseTime","field_178873_i","field_3747"})try{if(!name.isEmpty()){Field f=entry.getClass().getDeclaredField(name);f.setAccessible(true);latency=f.get(entry);break;}}catch(Exception ignored){}
-            if(latency instanceof Number){int ms=((Number)latency).intValue();if(ms>=0&&ms<60000)ping=ms+" ms";}
+            Integer ms=latency(GameAccess.call(connection,"getPlayerInfo",uuid));
+            if(ms==null)ms=latency(GameAccess.call(connection,"getPlayerListEntry",uuid));
+            if(ms==null)for(Method m:connection.getClass().getMethods())if(Arrays.equals(m.getParameterTypes(),new Class<?>[]{UUID.class})&&!m.getReturnType().isPrimitive()){
+                try{ms=latency(m.invoke(connection,uuid));if(ms!=null)break;}catch(Exception ignored){}
+            }
+            if(ms!=null){ping=ms+" ms";pingAt=System.nanoTime();}
         }catch(Throwable ignored){world=client!=null&&world;}
+    }
+    private Integer latency(Object entry){
+            if(entry==null)return null;
+            Object latency=call(entry,new String[]{"getLatency","getResponseTime","func_178853_c","method_2959"});
+            if(!(latency instanceof Number))latency=GameAccess.call(entry,"getLatency");
+            if(!(latency instanceof Number))latency=GameAccess.field(entry,"latency");
+            if(!(latency instanceof Number))for(String name:new String[]{latencyField,"latency","responseTime","field_178873_i","field_3747"})try{if(!name.isEmpty()){Field f=entry.getClass().getDeclaredField(name);f.setAccessible(true);latency=f.get(entry);break;}}catch(Exception ignored){}
+            if(latency instanceof Number){int ms=((Number)latency).intValue();if(ms>=0)return ms;}
+            return null;
     }
     private void findClient(){
         for(String name:new String[]{clientClass,"net.minecraft.client.Minecraft","net.minecraft.client.MinecraftClient","net.minecraft.class_310"}){
