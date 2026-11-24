@@ -26,3 +26,10 @@
 ## Обратная связь
 
 [Сообщить о проблеме](https://github.com/slarenc/kyro-launcher/issues)
+
+## Лицензии
+
+- [MIT License](LICENSE)
+- [Лицензия приложения](APPLICATION_LICENSE.md)
+- [Лицензии сторонних компонентов](THIRD_PARTY_NOTICES.md)
+- [Лицензия шрифта Inter](Inter-LICENSE.txt)
